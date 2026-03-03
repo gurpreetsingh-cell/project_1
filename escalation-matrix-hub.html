@@ -1,0 +1,1218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Escalation Hub</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f5f3ef;--sf:#ffffff;--sf2:#ede9e2;--bd:#d9d4ca;
+  --ac:#f0a500;--gn:#16a34a;--rd:#dc2626;--yw:#d97706;--bl:#2563eb;--pp:#7c3aed;
+  --tx:#1c1917;--mt:#78716c;--dark:#292524;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--tx);font-family:'DM Sans',sans-serif;min-height:100vh;overflow-x:hidden}
+body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(240,165,0,.04)1px,transparent 1px),linear-gradient(90deg,rgba(240,165,0,.04)1px,transparent 1px);background-size:40px 40px;pointer-events:none;z-index:0}
+.app{position:relative;z-index:1;display:none}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.8)}}
+@keyframes slideIn{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:translateX(0)}}
+@keyframes modalIn{from{opacity:0;transform:scale(.95) translateY(10px)}to{opacity:1;transform:scale(1) translateY(0)}}
+@keyframes toastIn{from{opacity:0;transform:translateX(24px)}to{opacity:1;transform:translateX(0)}}
+@keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+
+/* ══ LOGIN SCREEN ══ */
+#loginScreen{position:fixed;inset:0;background:var(--bg);z-index:1000;display:flex;align-items:center;justify-content:center}
+#loginScreen::before{content:'';position:absolute;inset:0;background-image:linear-gradient(rgba(240,165,0,.04)1px,transparent 1px),linear-gradient(90deg,rgba(240,165,0,.04)1px,transparent 1px);background-size:40px 40px;pointer-events:none}
+.login-box{position:relative;z-index:1;background:var(--sf);border:1px solid var(--bd);border-radius:16px;padding:36px;width:400px;max-width:95vw;box-shadow:0 8px 32px rgba(0,0,0,.1);animation:fadeUp .4s ease}
+.login-logo{text-align:center;margin-bottom:24px}
+.login-logo-text{font-family:'Syne',sans-serif;font-weight:800;font-size:22px;display:inline-flex;align-items:center;gap:9px;color:var(--dark)}
+.login-dot{width:11px;height:11px;background:var(--rd);border-radius:50%;box-shadow:0 0 12px rgba(220,38,38,.5);animation:pulse 2s infinite}
+.login-sub{font-size:11px;color:var(--mt);font-family:'DM Mono',monospace;margin-top:5px}
+.l-field{display:flex;flex-direction:column;gap:5px;margin-bottom:12px}
+.l-label{font-size:9px;text-transform:uppercase;letter-spacing:1.2px;color:var(--mt);font-family:'DM Mono',monospace}
+.l-inp{background:var(--bg);border:1px solid var(--bd);border-radius:7px;padding:10px 12px;color:var(--tx);font-family:'DM Mono',monospace;font-size:13px;outline:none;transition:border-color .2s;width:100%}
+.l-inp:focus{border-color:var(--ac)}
+.l-inp.err{border-color:var(--rd)}
+.l-btn{background:var(--rd);color:#fff;border:none;border-radius:8px;padding:12px;font-family:'Syne',sans-serif;font-weight:700;font-size:14px;cursor:pointer;transition:all .2s;width:100%;margin-top:4px}
+.l-btn:hover{background:#b91c1c;transform:translateY(-1px)}
+.l-err{background:rgba(220,38,38,.08);border:1px solid rgba(220,38,38,.25);border-radius:6px;padding:9px;font-size:11px;color:var(--rd);font-family:'DM Mono',monospace;text-align:center;display:none;margin-top:8px}
+
+/* HEADER */
+header{display:flex;align-items:center;justify-content:space-between;padding:11px 22px;border-bottom:1px solid var(--bd);background:rgba(255,255,255,.98);backdrop-filter:blur(12px);position:sticky;top:0;z-index:200;box-shadow:0 1px 6px rgba(0,0,0,.06);flex-wrap:wrap;gap:8px}
+.logo{font-family:'Syne',sans-serif;font-weight:800;font-size:16px;letter-spacing:-.5px;display:flex;align-items:center;gap:8px;color:var(--dark)}
+.logo-dot{width:8px;height:8px;background:var(--rd);border-radius:50%;box-shadow:0 0 10px rgba(220,38,38,.5);animation:pulse 2s infinite}
+.hdr-right{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.live-badge{display:flex;align-items:center;gap:5px;font-family:'DM Mono',monospace;font-size:10px;color:var(--gn);background:rgba(22,163,74,.08);border:1px solid rgba(22,163,74,.2);padding:3px 9px;border-radius:20px}
+.live-dot{width:5px;height:5px;background:var(--gn);border-radius:50%;animation:pulse 1.5s infinite}
+.hdr-clock{font-family:'DM Mono',monospace;font-size:11px;color:var(--mt);background:var(--bg);border:1px solid var(--bd);padding:4px 11px;border-radius:6px;white-space:nowrap}
+.user-chip{display:flex;align-items:center;gap:6px;background:var(--bg);border:1px solid var(--bd);border-radius:20px;padding:4px 11px;font-family:'DM Mono',monospace;font-size:11px;color:var(--tx)}
+.u-av{width:22px;height:22px;border-radius:50%;background:rgba(220,38,38,.15);color:var(--rd);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700}
+.hdr-btn{padding:6px 13px;border-radius:6px;font-size:11px;font-family:'DM Mono',monospace;cursor:pointer;transition:all .2s;border:1px solid;font-weight:600;white-space:nowrap}
+.btn-new{background:var(--rd);border-color:var(--rd);color:#fff}
+.btn-new:hover{background:#b91c1c}
+.btn-bulk{background:rgba(37,99,235,.08);border-color:rgba(37,99,235,.3);color:var(--bl)}
+.btn-bulk:hover{background:rgba(37,99,235,.16)}
+.btn-drive{background:rgba(124,58,237,.08);border-color:rgba(124,58,237,.3);color:var(--pp)}
+.btn-drive:hover{background:rgba(124,58,237,.16)}
+.btn-export{background:rgba(22,163,74,.08);border-color:rgba(22,163,74,.3);color:var(--gn)}
+.btn-export:hover{background:rgba(22,163,74,.18)}
+.export-wrap{position:relative}
+.export-menu{display:none;position:absolute;top:calc(100% + 6px);right:0;background:var(--sf);border:1px solid var(--bd);border-radius:10px;box-shadow:0 6px 24px rgba(0,0,0,.13);z-index:500;min-width:200px;overflow:hidden;animation:modalIn .18s ease}
+.export-menu.open{display:block}
+.em-title{padding:9px 13px 6px;font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:var(--mt);font-family:'DM Mono',monospace;border-bottom:1px solid var(--bd)}
+.em-months{display:flex;flex-direction:column;max-height:220px;overflow-y:auto}
+.em-month-btn{background:transparent;border:none;padding:8px 13px;text-align:left;font-family:'DM Mono',monospace;font-size:11px;color:var(--tx);cursor:pointer;transition:background .15s;display:flex;align-items:center;justify-content:space-between;gap:8px}
+.em-month-btn:hover{background:var(--sf2)}
+.em-month-count{font-size:9px;background:rgba(240,165,0,.15);color:var(--ac);padding:1px 6px;border-radius:8px;font-weight:700}
+.em-sep{height:1px;background:var(--bd);margin:4px 0}
+.em-all{background:transparent;border:none;padding:9px 13px;text-align:left;font-family:'DM Mono',monospace;font-size:11px;color:var(--gn);cursor:pointer;width:100%;transition:background .15s;font-weight:600}
+.em-all:hover{background:rgba(22,163,74,.06)}
+.btn-mgr{background:rgba(124,58,237,.08);border-color:rgba(124,58,237,.3);color:var(--pp)}
+.btn-mgr:hover{background:rgba(124,58,237,.16)}
+.btn-logout{background:transparent;border-color:var(--bd);color:var(--mt)}
+.btn-logout:hover{border-color:var(--rd);color:var(--rd)}
+
+/* STATS BAR */
+.stats-bar{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--bd);border-bottom:1px solid var(--bd)}
+.stat{background:var(--sf);padding:14px 20px;display:flex;align-items:center;gap:14px;cursor:pointer;transition:all .2s;position:relative;overflow:hidden}
+.stat::after{content:'';position:absolute;bottom:0;left:0;right:0;height:3px;background:transparent;transition:background .2s}
+.stat:hover{background:var(--sf2)}
+.stat.active{background:var(--sf2)}
+.stat.s-total.active::after{background:var(--ac)}
+.stat.s-open.active::after{background:var(--rd)}
+.stat.s-close.active::after{background:var(--gn)}
+.stat-icon{width:44px;height:44px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0}
+.ic-total{background:rgba(240,165,0,.1)}
+.ic-open{background:rgba(220,38,38,.1)}
+.ic-close{background:rgba(22,163,74,.1)}
+.stat-info{flex:1}
+.stat-label{font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:var(--mt);font-family:'DM Mono',monospace}
+.sv{font-family:'Syne',sans-serif;font-size:30px;font-weight:800;line-height:1.1;color:var(--dark);margin:2px 0}
+.sv.r{color:var(--rd)}.sv.g{color:var(--gn)}.sv.ac{color:var(--ac)}
+.stat-sub{font-size:10px;color:var(--mt)}
+
+/* MAIN */
+.main{display:flex;height:calc(100vh - 130px)}
+
+/* SIDEBAR */
+.sidebar{width:275px;border-right:1px solid var(--bd);background:var(--sf);display:flex;flex-direction:column;flex-shrink:0;overflow:hidden}
+.sb-title{padding:11px 14px;font-family:'Syne',sans-serif;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:var(--mt);border-bottom:1px solid var(--bd);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.sb-filter{padding:8px 10px;border-bottom:1px solid var(--bd);flex-shrink:0}
+.sb-filter select{width:100%;background:var(--bg);border:1px solid var(--bd);border-radius:6px;padding:5px 8px;font-family:'DM Mono',monospace;font-size:10px;color:var(--tx);outline:none}
+.nc{background:var(--rd);color:#fff;font-size:9px;width:17px;height:17px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700}
+.notif-panel{flex:1;overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:5px}
+.notif{background:var(--bg);border:1px solid var(--bd);border-radius:7px;padding:9px 10px;display:flex;flex-direction:column;gap:2px;animation:slideIn .3s ease;position:relative;overflow:hidden;flex-shrink:0}
+.notif::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px}
+.notif.n-new::before{background:var(--rd)}
+.notif.n-close::before{background:var(--gn)}
+.notif.n-bulk::before{background:var(--bl)}
+.notif.n-update::before{background:var(--ac)}
+.notif-top{display:flex;justify-content:space-between;align-items:center}
+.nt{font-size:9px;text-transform:uppercase;letter-spacing:1px;font-family:'DM Mono',monospace}
+.notif.n-new .nt{color:var(--rd)}.notif.n-close .nt{color:var(--gn)}.notif.n-bulk .nt{color:var(--bl)}.notif.n-update .nt{color:var(--ac)}
+.ntime{font-size:9px;color:var(--mt);font-family:'DM Mono',monospace}
+.nm{font-size:11px;color:var(--tx);line-height:1.4;font-weight:600}
+.nawb{font-family:'DM Mono',monospace;font-size:10px;color:var(--mt)}
+.n-user-tag{font-size:9px;font-family:'DM Mono',monospace;color:var(--pp);margin-top:1px}
+
+/* TABLE */
+.table-area{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.ship-tabs{display:flex;gap:1px;background:var(--bd);border-bottom:1px solid var(--bd);flex-shrink:0;overflow-x:auto}
+.ship-tab{padding:9px 12px;font-size:10px;font-family:'DM Mono',monospace;text-align:center;cursor:pointer;border:none;background:var(--sf);color:var(--mt);border-bottom:2px solid transparent;transition:all .2s;white-space:nowrap}
+.ship-tab.active{color:var(--ac);border-bottom-color:var(--ac);background:var(--sf2);font-weight:600}
+.ship-tab:hover:not(.active){background:var(--sf2);color:var(--tx)}
+.tab-count{display:inline-flex;align-items:center;justify-content:center;background:var(--bd);color:var(--mt);border-radius:10px;font-size:8px;padding:0 5px;margin-left:4px;min-width:16px;height:14px}
+.ship-tab.active .tab-count{background:rgba(240,165,0,.2);color:var(--ac)}
+.table-hdr{padding:9px 14px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--bd);background:var(--sf);flex-shrink:0;gap:8px;flex-wrap:wrap}
+.table-title{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--dark)}
+.srch{background:var(--bg);border:1px solid var(--bd);border-radius:6px;padding:5px 10px;color:var(--tx);font-family:'DM Mono',monospace;font-size:11px;outline:none;width:210px;transition:border-color .2s}
+.srch:focus{border-color:var(--ac)}
+.filter-bar{padding:7px 14px;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--bd);background:var(--sf2);flex-shrink:0;flex-wrap:wrap}
+.filter-bar label{font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--mt);font-family:'DM Mono',monospace;white-space:nowrap}
+.f-date{background:var(--bg);border:1px solid var(--bd);border-radius:6px;padding:4px 8px;color:var(--tx);font-family:'DM Mono',monospace;font-size:11px;outline:none;transition:border-color .2s}
+.f-date:focus{border-color:var(--ac)}
+.f-month{background:var(--bg);border:1px solid var(--bd);border-radius:6px;padding:4px 8px;color:var(--tx);font-family:'DM Mono',monospace;font-size:11px;outline:none}
+.f-clear{background:transparent;border:1px solid var(--bd);border-radius:6px;padding:4px 9px;color:var(--mt);font-family:'DM Mono',monospace;font-size:10px;cursor:pointer;transition:all .2s}
+.f-clear:hover{border-color:var(--rd);color:var(--rd)}
+.f-dl-btn{background:rgba(22,163,74,.08);border:1px solid rgba(22,163,74,.3);color:var(--gn);border-radius:6px;padding:4px 10px;font-family:'DM Mono',monospace;font-size:10px;cursor:pointer;font-weight:600;transition:all .2s;white-space:nowrap}
+.f-dl-btn:hover{background:rgba(22,163,74,.18)}
+.f-sep{width:1px;height:18px;background:var(--bd);flex-shrink:0}
+.table-scroll{flex:1;overflow-y:auto}
+table{width:100%;border-collapse:collapse}
+thead{position:sticky;top:0;background:var(--sf2);z-index:10}
+th{padding:8px 10px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:var(--mt);font-family:'DM Mono',monospace;font-weight:500;border-bottom:1px solid var(--bd);white-space:nowrap}
+tbody tr{border-bottom:1px solid var(--bd);transition:background .15s;animation:fadeUp .2s ease}
+tbody tr:hover{background:rgba(0,0,0,.02)}
+tbody tr.open-row{background:rgba(220,38,38,.03)}
+tbody tr.open-row:hover{background:rgba(220,38,38,.07)}
+td{padding:9px 10px;font-size:12px;vertical-align:middle}
+.mono{font-family:'DM Mono',monospace}
+.act-btn{background:transparent;border:1px solid var(--bd);color:var(--mt);padding:3px 8px;border-radius:5px;font-size:10px;font-family:'DM Mono',monospace;cursor:pointer;transition:all .2s;white-space:nowrap}
+.act-btn:hover{border-color:var(--ac);color:var(--ac)}
+.act-btn.vb{border-color:rgba(37,99,235,.3);color:var(--bl)}
+.act-btn.vb:hover{background:rgba(37,99,235,.08)}
+.act-btn.ub{border-color:rgba(240,165,0,.3);color:var(--ac)}
+.act-btn.ub:hover{background:rgba(240,165,0,.08)}
+.act-btn.db{border-color:rgba(220,38,38,.2);color:var(--rd)}
+.act-btn.db:hover{background:rgba(220,38,38,.08)}
+
+/* TAT badge */
+.tat-badge{display:inline-flex;align-items:center;gap:3px;font-family:'DM Mono',monospace;font-size:10px;padding:2px 7px;border-radius:4px;font-weight:600}
+.tat-ok{background:rgba(22,163,74,.1);color:var(--gn)}
+.tat-warn{background:rgba(217,119,6,.1);color:var(--yw)}
+.tat-breach{background:rgba(220,38,38,.12);color:var(--rd)}
+
+/* BADGES */
+.pb{display:inline-flex;align-items:center;gap:3px;padding:3px 9px;border-radius:20px;font-size:9px;font-family:'DM Mono',monospace;font-weight:700;text-transform:uppercase;letter-spacing:.5px}
+.pb.fake-attempt{background:rgba(220,38,38,.1);color:var(--rd);border:1px solid rgba(220,38,38,.2)}
+.pb.delay{background:rgba(217,119,6,.1);color:var(--yw);border:1px solid rgba(217,119,6,.2)}
+.pb.other{background:rgba(120,113,108,.1);color:var(--mt);border:1px solid rgba(120,113,108,.2)}
+.pb.reattempt{background:rgba(37,99,235,.1);color:var(--bl);border:1px solid rgba(37,99,235,.2)}
+.sb-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:5px;font-size:10px;font-family:'DM Mono',monospace;font-weight:700}
+.sb-badge.open{background:rgba(220,38,38,.1);color:var(--rd)}
+.sb-badge.close{background:rgba(22,163,74,.1);color:var(--gn)}
+.pay-badge{font-family:'DM Mono',monospace;font-size:10px;padding:2px 7px;border-radius:4px;background:rgba(240,165,0,.1);color:var(--yw);border:1px solid rgba(240,165,0,.15)}
+.empty{text-align:center;padding:56px 20px;color:var(--mt);font-family:'DM Mono',monospace;font-size:12px}
+.empty-ico{font-size:40px;margin-bottom:10px;opacity:.35}
+
+/* MODALS */
+.mo{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:300;display:none;align-items:center;justify-content:center;backdrop-filter:blur(3px)}
+.mo.open{display:flex}
+.modal{background:var(--sf);border:1px solid var(--bd);border-radius:14px;width:520px;max-width:96vw;overflow:hidden;animation:modalIn .22s ease;box-shadow:0 16px 56px rgba(0,0,0,.18)}
+.modal.wide{width:640px}
+.modal.narrow{width:440px}
+.m-hd{padding:15px 20px;border-bottom:1px solid var(--bd);display:flex;justify-content:space-between;align-items:center;background:var(--sf2)}
+.m-title{font-family:'Syne',sans-serif;font-size:14px;font-weight:700;color:var(--dark)}
+.m-cls{background:none;border:none;font-size:16px;color:var(--mt);cursor:pointer;padding:2px 7px;border-radius:4px;transition:all .2s}
+.m-cls:hover{background:rgba(220,38,38,.1);color:var(--rd)}
+.m-body{padding:18px;display:flex;flex-direction:column;gap:12px;max-height:78vh;overflow-y:auto}
+.m-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.f-grp{display:flex;flex-direction:column;gap:4px}
+.f-lbl{font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--mt);font-family:'DM Mono',monospace;display:flex;align-items:center;gap:5px}
+.req{color:var(--rd);font-size:10px}
+.m-inp{background:var(--bg);border:1px solid var(--bd);border-radius:6px;padding:8px 10px;color:var(--tx);font-family:'DM Mono',monospace;font-size:12px;outline:none;transition:border-color .2s;width:100%}
+.m-inp:focus{border-color:var(--ac)}
+.m-inp.err{border-color:var(--rd);background:rgba(220,38,38,.03)}
+.m-inp[readonly]{background:var(--sf2);color:var(--mt);cursor:default}
+.auto-tag{font-size:9px;font-family:'DM Mono',monospace;padding:2px 6px;border-radius:8px;background:rgba(240,165,0,.1);color:var(--ac);border:1px solid rgba(240,165,0,.2)}
+.type-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.type-opt{padding:11px 6px;border-radius:7px;border:1px solid var(--bd);background:transparent;color:var(--mt);font-size:11px;font-family:'DM Mono',monospace;cursor:pointer;transition:all .2s;text-align:center;font-weight:600}
+.type-opt:hover{border-color:var(--mt);color:var(--tx)}
+.type-opt.sel-fake{border-color:var(--rd);background:rgba(220,38,38,.08);color:var(--rd)}
+.type-opt.sel-delay{border-color:var(--yw);background:rgba(217,119,6,.08);color:var(--yw)}
+.type-opt.sel-other{border-color:var(--mt);background:rgba(120,113,108,.1);color:var(--dark)}
+.type-opt.sel-reattempt{border-color:var(--bl);background:rgba(37,99,235,.08);color:var(--bl)}
+.type-row-4{grid-template-columns:1fr 1fr 1fr 1fr}
+.st-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.so{padding:10px 6px;border-radius:6px;border:1px solid var(--bd);background:transparent;color:var(--mt);font-size:11px;font-family:'DM Mono',monospace;cursor:pointer;transition:all .2s;text-align:center;font-weight:600}
+.so.s-open{border-color:var(--rd);background:rgba(220,38,38,.08);color:var(--rd)}
+.so.s-close{border-color:var(--gn);background:rgba(22,163,74,.08);color:var(--gn)}
+.m-save{border:none;border-radius:7px;padding:12px;font-family:'Syne',sans-serif;font-weight:700;font-size:13px;cursor:pointer;transition:all .2s;color:#fff}
+.m-save:hover:not(:disabled){transform:translateY(-1px)}
+.m-save.red{background:var(--rd)}.m-save.red:hover:not(:disabled){background:#b91c1c}
+.m-save.green{background:var(--gn)}.m-save.green:hover:not(:disabled){background:#15803d}
+.m-save.purple{background:var(--pp)}.m-save.purple:hover:not(:disabled){background:#6d28d9}
+.m-save:disabled{opacity:.38;cursor:not-allowed;transform:none}
+.detail-box{background:var(--bg);border:1px solid var(--bd);border-radius:7px;padding:11px 13px;display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.di-item{display:flex;flex-direction:column;gap:2px}
+.di-lbl{font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--mt);font-family:'DM Mono',monospace}
+.di-val{font-size:12px;color:var(--tx);font-family:'DM Mono',monospace;font-weight:600}
+
+/* VIEW MODAL */
+.view-section{background:var(--bg);border:1px solid var(--bd);border-radius:8px;padding:13px;display:flex;flex-direction:column;gap:8px}
+.vs-title{font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:var(--mt);font-family:'DM Mono',monospace;margin-bottom:4px}
+.vs-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.vs-item{display:flex;flex-direction:column;gap:2px}
+.vs-lbl{font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--mt);font-family:'DM Mono',monospace}
+.vs-val{font-size:12px;color:var(--tx);font-family:'DM Mono',monospace;font-weight:600}
+.vs-remarks{background:var(--sf);border:1px solid var(--bd);border-radius:5px;padding:8px 10px;font-size:12px;color:var(--tx);line-height:1.5}
+.tat-info-bar{display:flex;align-items:center;justify-content:space-between;background:var(--sf2);border:1px solid var(--bd);border-radius:7px;padding:9px 13px}
+.tat-info-bar .ti-lbl{font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--mt);font-family:'DM Mono',monospace}
+.tat-info-bar .ti-val{font-family:'Syne',sans-serif;font-size:14px;font-weight:700}
+
+/* USER MANAGER MODAL */
+.um-user-row{background:var(--bg);border:1px solid var(--bd);border-radius:8px;padding:10px 13px;display:flex;align-items:center;gap:10px}
+.um-avatar{width:30px;height:30px;border-radius:50%;background:rgba(220,38,38,.15);color:var(--rd);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0}
+.um-info{flex:1}
+.um-name{font-family:'Syne',sans-serif;font-size:12px;font-weight:700}
+.um-uname{font-family:'DM Mono',monospace;font-size:10px;color:var(--mt)}
+.um-del-btn{background:transparent;border:1px solid rgba(220,38,38,.2);color:var(--rd);padding:3px 8px;border-radius:5px;font-size:10px;font-family:'DM Mono',monospace;cursor:pointer;transition:all .2s}
+.um-del-btn:hover{background:rgba(220,38,38,.08)}
+.um-add-form{background:rgba(124,58,237,.04);border:1px solid rgba(124,58,237,.18);border-radius:8px;padding:13px;display:flex;flex-direction:column;gap:9px}
+.um-add-title{font-size:10px;font-family:'DM Mono',monospace;font-weight:700;color:var(--pp);margin-bottom:2px}
+.um-add-btn{background:var(--pp);color:#fff;border:none;border-radius:6px;padding:9px;font-family:'Syne',sans-serif;font-weight:700;font-size:12px;cursor:pointer;transition:all .2s}
+.um-add-btn:hover{background:#6d28d9}
+.admin-badge{font-size:9px;font-family:'DM Mono',monospace;padding:2px 7px;border-radius:10px;background:rgba(124,58,237,.1);color:var(--pp);border:1px solid rgba(124,58,237,.2)}
+
+/* BULK TABS */
+.btab-row{display:flex;gap:1px;background:var(--bd);border-radius:8px 8px 0 0;overflow:hidden}
+.btab{flex:1;padding:9px;text-align:center;background:var(--sf2);font-family:'DM Mono',monospace;font-size:11px;cursor:pointer;color:var(--mt);border:none;transition:all .2s;font-weight:600}
+.btab.active{background:var(--sf);color:var(--tx)}
+.btab-content{display:none;flex-direction:column;gap:12px}
+.btab-content.active{display:flex}
+.drop-zone{border:2px dashed var(--bd);border-radius:10px;padding:28px;text-align:center;cursor:pointer;transition:all .2s;background:var(--bg)}
+.drop-zone:hover,.drop-zone.drag{border-color:var(--bl);background:rgba(37,99,235,.04)}
+.drop-ico{font-size:32px;margin-bottom:8px}
+.drop-txt{font-family:'DM Mono',monospace;font-size:12px;color:var(--mt)}
+.drop-txt strong{color:var(--bl)}
+.col-map-box{background:rgba(37,99,235,.04);border:1px solid rgba(37,99,235,.15);border-radius:8px;padding:13px}
+.col-map-title{font-size:10px;font-family:'DM Mono',monospace;font-weight:700;color:var(--bl);margin-bottom:10px}
+.col-map-row{display:grid;grid-template-columns:1fr 20px 1fr;gap:6px;align-items:center;margin-bottom:6px}
+.col-field{font-size:10px;font-family:'DM Mono',monospace;color:var(--mt)}
+.col-sel{background:var(--bg);border:1px solid var(--bd);border-radius:5px;padding:5px 7px;font-family:'DM Mono',monospace;font-size:11px;outline:none;color:var(--tx);width:100%}
+.col-sel:focus{border-color:var(--bl)}
+.info-box{border-radius:6px;padding:9px 12px;font-family:'DM Mono',monospace;font-size:11px}
+.info-box.green{background:rgba(22,163,74,.05);border:1px solid rgba(22,163,74,.2);color:var(--gn)}
+.info-box.blue{background:rgba(37,99,235,.05);border:1px solid rgba(37,99,235,.2);color:var(--bl)}
+.info-box.purple{background:rgba(124,58,237,.05);border:1px solid rgba(124,58,237,.2);color:var(--pp)}
+.drive-url-inp{background:var(--bg);border:1px solid var(--bd);border-radius:7px;padding:10px 12px;font-family:'DM Mono',monospace;font-size:12px;outline:none;color:var(--tx);width:100%;transition:border-color .2s}
+.drive-url-inp:focus{border-color:var(--pp)}
+.preview-wrap{overflow-x:auto;border-radius:6px;border:1px solid var(--bd)}
+.preview-tbl{width:100%;border-collapse:collapse;font-size:10px;font-family:'DM Mono',monospace}
+.preview-tbl th{background:var(--sf2);padding:5px 8px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--mt);border-bottom:1px solid var(--bd);white-space:nowrap}
+.preview-tbl td{padding:5px 8px;border-bottom:1px solid var(--bd);color:var(--tx);white-space:nowrap}
+.preview-tbl tr:last-child td{border-bottom:none}
+
+/* TOAST */
+#tc{position:fixed;bottom:18px;right:18px;z-index:9999;display:flex;flex-direction:column;gap:7px;pointer-events:none}
+.toast{display:flex;align-items:flex-start;gap:10px;background:var(--sf);border:1px solid var(--bd);border-radius:10px;padding:11px 14px;min-width:255px;max-width:310px;box-shadow:0 4px 20px rgba(0,0,0,.13);animation:toastIn .28s ease;pointer-events:auto}
+.toast.fo{opacity:0;transition:opacity .3s}
+.toast.t-ok{border-left:3px solid var(--gn)}
+.toast.t-err{border-left:3px solid var(--rd)}
+.toast.t-info{border-left:3px solid var(--bl)}
+.toast.t-bulk{border-left:3px solid var(--pp)}
+.ti{font-size:15px;flex-shrink:0;margin-top:1px}
+.tco{flex:1}
+.ttl{font-family:'Syne',sans-serif;font-weight:700;font-size:12px;color:var(--dark)}
+.tmg{font-size:10px;color:var(--mt);font-family:'DM Mono',monospace;margin-top:2px}
+
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--bd);border-radius:2px}
+</style>
+</head>
+<body>
+
+<!-- ══ LOGIN SCREEN ══ -->
+<div id="loginScreen">
+  <div class="login-box">
+    <div class="login-logo">
+      <div class="login-logo-text"><div class="login-dot"></div>Escalation Hub</div>
+      <div class="login-sub">Sign in to continue</div>
+    </div>
+    <div class="l-field">
+      <div class="l-label">Username</div>
+      <input class="l-inp" id="lUser" placeholder="Enter username" onkeydown="if(event.key==='Enter')doLogin()"/>
+    </div>
+    <div class="l-field">
+      <div class="l-label">Password</div>
+      <input class="l-inp" id="lPass" type="password" placeholder="Enter password" onkeydown="if(event.key==='Enter')doLogin()"/>
+    </div>
+    <button class="l-btn" onclick="doLogin()">Sign In →</button>
+    <div class="l-err" id="lErr">Invalid username or password</div>
+  </div>
+</div>
+
+<!-- ══ APP ══ -->
+<div class="app" id="appWrap">
+
+<!-- HEADER -->
+<header>
+  <div class="logo"><div class="logo-dot"></div>Escalation Hub</div>
+  <div class="hdr-right">
+    <div class="live-badge"><div class="live-dot"></div>LIVE</div>
+    <div class="hdr-clock" id="hdrClock">—</div>
+    <div class="user-chip"><div class="u-av" id="uAvatar">?</div><span id="uName">—</span></div>
+    <button class="hdr-btn btn-new" onclick="openNewModal()">🚨 New Escalation</button>
+    <button class="hdr-btn btn-bulk" onclick="openBulkModal('excel')">📤 Bulk Upload</button>
+    <button class="hdr-btn btn-mgr" id="mgrBtn" onclick="openModal('umMO')" style="display:none">👥 Users</button>
+    <div class="export-wrap" id="exportWrap">
+      <button class="hdr-btn btn-export" onclick="toggleExportMenu()">📥 Export ▾</button>
+      <div class="export-menu" id="exportMenu">
+        <div class="em-title">Export by Month</div>
+        <div class="em-months" id="emMonths"></div>
+        <div class="em-sep"></div>
+        <button class="em-all" onclick="downloadExcel();closeExportMenu()">📋 All Data</button>
+      </div>
+    </div>
+    <button class="hdr-btn btn-logout" onclick="doLogout()">↩ Logout</button>
+  </div>
+</header>
+
+<!-- STATS BAR -->
+<div class="stats-bar">
+  <div class="stat s-total" onclick="filterStat('all',this)">
+    <div class="stat-icon ic-total">📋</div>
+    <div class="stat-info">
+      <div class="stat-label">Total Escalations</div>
+      <div class="sv ac" id="sTotal">0</div>
+      <div class="stat-sub">All logged entries</div>
+    </div>
+  </div>
+  <div class="stat s-open active" onclick="filterStat('open',this)">
+    <div class="stat-icon ic-open">🔴</div>
+    <div class="stat-info">
+      <div class="stat-label">Open Escalations</div>
+      <div class="sv r" id="sOpen">0</div>
+      <div class="stat-sub">Needs resolution</div>
+    </div>
+  </div>
+  <div class="stat s-close" onclick="filterStat('close',this)">
+    <div class="stat-icon ic-close">✅</div>
+    <div class="stat-info">
+      <div class="stat-label">Closed Escalations</div>
+      <div class="sv g" id="sClosed">0</div>
+      <div class="stat-sub">Resolved entries</div>
+    </div>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div class="main">
+  <!-- ACTIVITY SIDEBAR -->
+  <div class="sidebar">
+    <div class="sb-title">🔔 Activity Feed <div class="nc" id="nc">0</div></div>
+    <div class="sb-filter">
+      <select id="actFilter" onchange="renderActivity()">
+        <option value="all">All Users</option>
+      </select>
+    </div>
+    <div class="notif-panel" id="np">
+      <div style="text-align:center;padding:24px 16px;color:var(--mt);font-size:11px;font-family:'DM Mono',monospace">No activity yet</div>
+    </div>
+  </div>
+
+  <!-- TABLE -->
+  <div class="table-area">
+    <div class="ship-tabs">
+      <button class="ship-tab active" onclick="setTab('all',this)">📋 All <span class="tab-count" id="tc_all">0</span></button>
+      <button class="ship-tab" onclick="setTab('fake',this)">🚫 Fake Attempt <span class="tab-count" id="tc_fake">0</span></button>
+      <button class="ship-tab" onclick="setTab('delay',this)">⏰ Delay <span class="tab-count" id="tc_delay">0</span></button>
+      <button class="ship-tab" onclick="setTab('reattempt',this)">🔄 Reattempt <span class="tab-count" id="tc_reattempt">0</span></button>
+      <button class="ship-tab" onclick="setTab('other',this)">📌 Other <span class="tab-count" id="tc_other">0</span></button>
+      <button class="ship-tab" onclick="setTab('tab_open',this)">🔴 Open <span class="tab-count" id="tc_tab_open">0</span></button>
+      <button class="ship-tab" onclick="setTab('tab_close',this)">✅ Closed <span class="tab-count" id="tc_tab_close">0</span></button>
+    </div>
+    <div class="table-hdr">
+      <div class="table-title" id="tableTitle">🔴 Open Escalations</div>
+      <input class="srch" id="srchInp" placeholder="🔍 Search client, order, AWB…" oninput="render()"/>
+    </div>
+    <div class="filter-bar">
+      <label>From</label>
+      <input type="date" class="f-date" id="fFrom" onchange="render()"/>
+      <label>To</label>
+      <input type="date" class="f-date" id="fTo" onchange="render()"/>
+      <button class="f-clear" onclick="clearFilters()">✕ Clear</button>
+      <div class="f-sep"></div>
+      <button class="f-dl-btn" onclick="downloadFiltered()">📥 Download Filtered</button>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead><tr>
+          <th>#</th><th>Date &amp; Time</th><th>Client Name</th><th>Courier</th>
+          <th>Order No.</th><th>AWB No.</th><th>Payment</th><th>Type</th>
+          <th>Action / Remarks</th><th>TAT</th><th>Status</th><th>By</th><th>Actions</th>
+        </tr></thead>
+        <tbody id="tb"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+</div><!-- /app -->
+
+<!-- ══ NEW ESCALATION MODAL ══ -->
+<div class="mo" id="newMO">
+  <div class="modal">
+    <div class="m-hd"><div class="m-title">🚨 Log New Escalation</div><button class="m-cls" onclick="closeMo('newMO')">✕</button></div>
+    <div class="m-body">
+      <div class="m-grid">
+        <div class="f-grp">
+          <div class="f-lbl">Date <span class="auto-tag">⚡ Auto</span></div>
+          <input class="m-inp" id="nDate" readonly/>
+        </div>
+        <div class="f-grp">
+          <div class="f-lbl">Time <span class="auto-tag">⚡ Auto</span></div>
+          <input class="m-inp" id="nTime" readonly/>
+        </div>
+      </div>
+      <div class="f-grp">
+        <div class="f-lbl">Logged By <span class="auto-tag">⚡ Auto</span></div>
+        <input class="m-inp" id="nLoggedBy" readonly style="color:var(--pp);font-weight:600"/>
+      </div>
+      <div class="f-grp">
+        <div class="f-lbl">Client Name <span class="req">* required</span></div>
+        <input class="m-inp" id="nClient" placeholder="e.g. Asaya" oninput="validateNew()"/>
+      </div>
+      <div class="m-grid">
+        <div class="f-grp">
+          <div class="f-lbl">Order No. <span style="font-size:9px;color:var(--mt);font-family:'DM Mono',monospace">(optional)</span></div>
+          <input class="m-inp" id="nOrder" placeholder="ORD-001"/>
+        </div>
+        <div class="f-grp">
+          <div class="f-lbl">AWB No. <span class="req">* required</span></div>
+          <input class="m-inp" id="nAwb" placeholder="AWB-XXXX" oninput="validateNew()"/>
+          <div class="awb-err" id="nAwbErr" style="display:none;font-size:10px;color:var(--rd);font-family:'DM Mono',monospace;margin-top:3px">🚫 Duplicate Entry: This AWB has already been escalated. Please avoid re-submission.</div>
+        </div>
+      </div>
+      <div class="f-grp">
+        <div class="f-lbl">Payment Mode</div>
+        <select class="m-inp" id="nPayment"><option>Prepaid</option><option>COD</option></select>
+      </div>
+      <div class="f-grp">
+        <div class="f-lbl">Escalation Type <span class="req">* required</span></div>
+        <div class="type-row type-row-4">
+          <button class="type-opt sel-fake" id="nT_fake" onclick="selType('new','Fake Attempt')">🚫 Fake Attempt</button>
+          <button class="type-opt" id="nT_delay" onclick="selType('new','Delay')">⏰ Delay</button>
+          <button class="type-opt" id="nT_reattempt" onclick="selType('new','Reattempt')">🔄 Reattempt</button>
+          <button class="type-opt" id="nT_other" onclick="selType('new','Other')">📌 Other</button>
+        </div>
+      </div>
+      <div class="f-grp">
+        <div class="f-lbl">Action / Remarks <span class="req">* required</span></div>
+        <textarea class="m-inp" id="nRemarks" rows="3" placeholder="Describe issue and action taken… (mandatory)" style="resize:vertical" oninput="validateNew()"></textarea>
+      </div>
+      <button class="m-save red" id="nSubmitBtn" onclick="submitNew()" disabled>🚨 LOG ESCALATION</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ VIEW MODAL ══ -->
+<div class="mo" id="viewMO">
+  <div class="modal">
+    <div class="m-hd"><div class="m-title">👁️ View Escalation</div><button class="m-cls" onclick="closeMo('viewMO')">✕</button></div>
+    <div class="m-body" id="viewBody"></div>
+  </div>
+</div>
+
+<!-- ══ UPDATE MODAL ══ -->
+<div class="mo" id="upMO">
+  <div class="modal">
+    <div class="m-hd"><div class="m-title">✏️ Update Escalation</div><button class="m-cls" onclick="closeMo('upMO')">✕</button></div>
+    <div class="m-body">
+      <div class="detail-box" id="moInfo"></div>
+      <div class="m-grid">
+        <div class="f-grp">
+          <div class="f-lbl">Client Name</div>
+          <input class="m-inp" id="uClient"/>
+        </div>
+        <div class="f-grp">
+          <div class="f-lbl">Courier Name</div>
+          <input class="m-inp" id="uCourier"/>
+        </div>
+      </div>
+      <div class="m-grid">
+        <div class="f-grp">
+          <div class="f-lbl">Order No.</div>
+          <input class="m-inp" id="uOrder"/>
+        </div>
+        <div class="f-grp">
+          <div class="f-lbl">AWB No.</div>
+          <input class="m-inp" id="uAwb"/>
+        </div>
+      </div>
+      <div class="f-grp">
+        <div class="f-lbl">Payment Mode</div>
+        <select class="m-inp" id="uPayment"><option>Prepaid</option><option>COD</option></select>
+      </div>
+      <div class="f-grp">
+        <div class="f-lbl">Escalation Type <span class="req">* required</span></div>
+        <div class="type-row type-row-4">
+          <button class="type-opt" id="uT_fake" onclick="selType('up','Fake Attempt')">🚫 Fake Attempt</button>
+          <button class="type-opt" id="uT_delay" onclick="selType('up','Delay')">⏰ Delay</button>
+          <button class="type-opt" id="uT_reattempt" onclick="selType('up','Reattempt')">🔄 Reattempt</button>
+          <button class="type-opt" id="uT_other" onclick="selType('up','Other')">📌 Other</button>
+        </div>
+      </div>
+      <div class="f-grp">
+        <div class="f-lbl">Action / Remarks <span class="req">* required</span></div>
+        <textarea class="m-inp" id="uRemarks" rows="3" style="resize:vertical" oninput="validateUpdate()"></textarea>
+      </div>
+      <div class="f-grp">
+        <div class="f-lbl">Status</div>
+        <div class="st-row">
+          <button class="so" id="so_open" onclick="selStatus('open')">🔴 Open</button>
+          <button class="so" id="so_close" onclick="selStatus('close')">✅ Close</button>
+        </div>
+      </div>
+      <button class="m-save green" id="uSubmitBtn" onclick="saveUpdate()">💾 SAVE UPDATE</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ USER MANAGER MODAL ══ -->
+<div class="mo" id="umMO">
+  <div class="modal narrow">
+    <div class="m-hd"><div class="m-title">👥 User Manager</div><button class="m-cls" onclick="closeMo('umMO')">✕</button></div>
+    <div class="m-body">
+      <div id="umUserList" style="display:flex;flex-direction:column;gap:7px"></div>
+      <div class="um-add-form">
+        <div class="um-add-title">➕ Create New User</div>
+        <div class="m-grid">
+          <div class="f-grp">
+            <div class="f-lbl">Full Name</div>
+            <input class="m-inp" id="umName" placeholder="Name…"/>
+          </div>
+          <div class="f-grp">
+            <div class="f-lbl">Username</div>
+            <input class="m-inp" id="umUser" placeholder="username…"/>
+          </div>
+        </div>
+        <div class="f-grp">
+          <div class="f-lbl">Password</div>
+          <input class="m-inp" type="password" id="umPass" placeholder="Password…"/>
+        </div>
+        <div class="f-grp">
+          <div class="f-lbl">Role</div>
+          <select class="m-inp" id="umRole"><option value="user">User</option><option value="admin">Admin</option><option value="urbanic">Urbanic</option></select>
+        </div>
+        <button class="um-add-btn" onclick="createUser()">➕ CREATE USER</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ BULK MODAL ══ -->
+<div class="mo" id="bulkMO">
+  <div class="modal wide">
+    <div class="m-hd"><div class="m-title">📤 Bulk Import — Excel</div><button class="m-cls" onclick="closeMo('bulkMO')">✕</button></div>
+    <div class="m-body">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+        <div style="font-family:'DM Mono',monospace;font-size:11px;color:var(--mt)">Upload your escalation data file below</div>
+        <button class="f-dl-btn" onclick="downloadSample()" style="font-size:11px;padding:5px 12px">📄 Download Sample File</button>
+      </div>
+      <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInp').click()" ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event)">
+        <div class="drop-ico">📊</div>
+        <div class="drop-txt"><strong>Click to browse</strong> or drag &amp; drop Excel / CSV here</div>
+        <div style="font-size:10px;color:var(--mt);margin-top:4px;font-family:'DM Mono',monospace">.xlsx · .xls · .csv supported</div>
+      </div>
+      <input type="file" id="fileInp" accept=".xlsx,.xls,.csv" style="display:none" onchange="handleFile(this.files[0])"/>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:2px">
+        <div style="flex:1;height:1px;background:var(--bd)"></div>
+        <div style="font-size:10px;font-family:'DM Mono',monospace;color:var(--mt)">OR</div>
+        <div style="flex:1;height:1px;background:var(--bd)"></div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:7px">
+        <div style="font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--mt);font-family:'DM Mono',monospace">Upload via Google Drive Link</div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input class="drive-url-inp" id="driveUrlInp" placeholder="Paste Google Drive shareable link here…" style="flex:1"/>
+          <button class="hdr-btn btn-drive" onclick="openDriveLink()" style="white-space:nowrap;padding:8px 14px;font-size:11px">🔗 Load from Drive</button>
+        </div>
+        <button class="m-save purple" onclick="connectGoogleDrive()" style="font-size:12px;padding:10px">🟢 Connect with Google Drive</button>
+        <div class="info-box purple" style="font-size:10px">Connect your Google Drive account for seamless direct import without needing shareable links.</div>
+      </div>
+      <div id="excelMapSec" style="display:none;flex-direction:column;gap:10px">
+        <div class="col-map-box"><div class="col-map-title">📌 Map Excel Columns → Escalation Fields</div><div id="excelMapGrid"></div></div>
+        <div id="previewWrap" style="display:none"><div style="font-size:10px;font-family:'DM Mono',monospace;color:var(--mt);margin-bottom:5px">Preview (first 5 rows):</div><div class="preview-wrap"><table class="preview-tbl" id="previewTbl"></table></div></div>
+        <div class="info-box green" id="excelInfo"></div>
+        <button class="m-save green" onclick="confirmImport()">📥 IMPORT ALL ROWS</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="tc"></div>
+
+<script>
+// ═══════════════ STATE ═══════════════
+let data = [];
+let activity = [];
+let selId = null;
+let mStatus = 'open';
+let newType = 'Fake Attempt';
+let upType = 'Fake Attempt';
+let activeTab = 'all';
+let statFilter = 'open';
+let nCount = 0;
+let excelRows=[], excelHdrs=[];
+let driveRows=[], driveHdrs=[];
+let currentUser = null;
+
+// socket connection
+const socket = io();
+
+const FIELDS=['client','awb','order','payment','type','remarks'];
+const FLABELS={client:'Client Name',awb:'AWB No. (Mandatory)',order:'Order No. (Optional)',payment:'Payment Mode',type:'Escalation Type',remarks:'Action / Remarks'};
+const AUTO_MAP={client:['client','client name','customer','name'],courier:['courier','courier name'],order:['order','order no','order no.','order_no','order number'],awb:['awb','awb no','awb no.','awb number','tracking'],payment:['payment','payment mode'],type:['type','escalation type','issue type'],remarks:['remarks','action','action/remarks','notes','comments']};
+const TAT_HOURS = 72;
+
+// ═══════════════ LOGIN ═══════════════
+function doLogin(){
+  const username=document.getElementById('lUser').value.trim();
+  const password=document.getElementById('lPass').value;
+  
+  console.log('Login attempt:', username);
+  
+  if(!username||!password){
+    document.getElementById('lErr').style.display='block';
+    document.getElementById('lErr').textContent='Username and password required';
+    return;
+  }
+  
+  fetch('/api/login',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({username,password})
+  })
+  .then(res=>{
+    console.log('Login response status:', res.status);
+    return res.json();
+  })
+  .then(data=>{
+    console.log('Login response data:', data);
+    if(data.status==='success'){
+      const user=data.user;
+      currentUser=user;
+      console.log('Login successful for user:', user.username);
+      try{ sessionStorage.setItem('esc_session',JSON.stringify({id:user.id,username:user.username,name:user.name,role:user.role})); }catch(e){}
+      document.getElementById('loginScreen').style.display='none';
+      document.getElementById('appWrap').style.display='block';
+      document.getElementById('uName').textContent=user.name;
+      document.getElementById('uAvatar').textContent=user.name.charAt(0).toUpperCase();
+      if(user.role==='admin') document.getElementById('mgrBtn').style.display='';
+      if(user.role==='urbanic'){ document.getElementById('exportWrap').style.display='none'; document.getElementById('mgrBtn').style.display='none'; }
+      else { document.getElementById('exportWrap').style.display=''; }
+      populateActFilter();
+      render(); updateStats(); updateTabs(); renderActivity();
+      document.getElementById('lErr').style.display='none';
+    } else {
+      console.log('Login failed:', data.message);
+      document.getElementById('lErr').style.display='block';
+      document.getElementById('lErr').textContent=data.message||'Invalid username or password';
+      document.getElementById('lUser').classList.add('err');
+      document.getElementById('lPass').classList.add('err');
+    }
+  })
+  .catch(err=>{
+    console.error('Login error:',err);
+    document.getElementById('lErr').style.display='block';
+    document.getElementById('lErr').textContent='Connection error. Please try again.';
+  });
+}
+function doLogout(){
+  currentUser=null;
+  try{ sessionStorage.removeItem('esc_session'); }catch(e){}
+  document.getElementById('loginScreen').style.display='flex';
+  document.getElementById('appWrap').style.display='none';
+  document.getElementById('lUser').value=''; document.getElementById('lPass').value='';
+  document.getElementById('lErr').style.display='none';
+  ['lUser','lPass'].forEach(id=>document.getElementById(id).classList.remove('err'));
+}
+
+// ═══════════════ DATA ═══════════════
+// "data" and "activity" state defined earlier; avoid redeclaring here
+
+// Socket.IO Events
+socket.on('connect',()=>{ console.log('Connected to server'); loadEscalations(); loadActivity(); });
+socket.on('escalation_added',(esc)=>{ data.unshift(esc); render(); updateStats(); updateTabs(); });
+socket.on('escalation_updated',(esc)=>{ const idx=data.findIndex(e=>e.id===esc.id); if(idx>=0) data[idx]=esc; render(); updateStats(); updateTabs(); });
+socket.on('escalation_deleted',(payload)=>{ data=data.filter(e=>e.id!==payload.id); render(); updateStats(); updateTabs(); });
+socket.on('activity_logged',(entry)=>{ activity.unshift(entry); renderActivity(); });
+
+async function loadEscalations(){ try{ const res=await fetch('/api/escalations'); data=await res.json(); render(); updateStats(); updateTabs(); }catch(e){ console.error('Error loading escalations:',e); } }
+async function loadActivity(){ try{ const res=await fetch('/api/activity'); activity=await res.json(); renderActivity(); }catch(e){ console.error('Error loading activity:',e); } }
+async function save(){ /* Server handles persistence */ }
+async function saveAct(){ /* Socket.IO handles propagation */ }
+function genId(){ return 'ESC-'+Date.now().toString(36).toUpperCase().slice(-7); }
+function fmtDate(ts){ return new Date(ts).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}); }
+function fmtTime(ts){ return new Date(ts).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',hour12:true}); }
+function typeClass(t){ return t==='Fake Attempt'?'fake-attempt':t==='Delay'?'delay':t==='Reattempt'?'reattempt':'other'; }
+
+function getTAT(e){
+  if(e.status==='close') return {label:'Closed',cls:'tat-ok',pct:100};
+  const hrs=(Date.now()-e.ts)/3600000;
+  const pct=Math.min(100,(hrs/TAT_HOURS)*100);
+  if(hrs>=TAT_HOURS) return {label:'BREACHED',cls:'tat-breach',pct:100};
+  if(hrs>=TAT_HOURS*0.75) return {label:Math.round(TAT_HOURS-hrs)+'h left',cls:'tat-warn',pct};
+  return {label:Math.round(TAT_HOURS-hrs)+'h left',cls:'tat-ok',pct};
+}
+
+// Clock
+function tick(){ const n=new Date(); document.getElementById('hdrClock').textContent=n.toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})+' · '+n.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:true}); }
+tick(); setInterval(tick,1000);
+
+// Backdrop close
+['newMO','upMO','bulkMO','umMO','viewMO'].forEach(id=>document.getElementById(id).addEventListener('click',function(e){if(e.target===this)closeMo(id);}));
+
+// Session restore
+try{
+  const s=JSON.parse(sessionStorage.getItem('esc_session'));
+  if(s&&s.id){
+    currentUser=s;
+    document.getElementById('loginScreen').style.display='none';
+    document.getElementById('appWrap').style.display='block';
+    document.getElementById('uName').textContent=s.name;
+    document.getElementById('uAvatar').textContent=s.name.charAt(0).toUpperCase();
+    if(s.role==='admin') document.getElementById('mgrBtn').style.display='';
+    if(s.role==='urbanic'){ document.getElementById('exportWrap').style.display='none'; document.getElementById('mgrBtn').style.display='none'; }
+    else { document.getElementById('exportWrap').style.display=''; }
+    populateActFilter();
+    loadEscalations();
+    loadActivity();
+  }
+}catch(e){}
+
+// ═══════════════ USER MANAGER ═══════════════
+function openModal(id){ document.getElementById(id).classList.add('open'); if(id==='umMO') renderUserList(); }
+function createUser(){
+  const name=document.getElementById('umName').value.trim();
+  const username=document.getElementById('umUser').value.trim();
+  const password=document.getElementById('umPass').value.trim();
+  const role=document.getElementById('umRole').value;
+  if(!name||!username||!password){toast('t-err','⚠️ Missing Fields','Fill all user fields.');return;}
+  
+  const newUser={id:'u'+Date.now(),name,username,password,role};
+  fetch('/api/users',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(newUser)})
+    .then(res=>res.json())
+    .then(data=>{
+      if(data.status==='success'){
+        ['umName','umUser','umPass'].forEach(id=>document.getElementById(id).value='');
+        renderUserList(); populateActFilter();
+        toast('t-ok','✅ User Created',`${name} (${username}) added!`);
+      } else {
+        toast('t-err','❌ Error',data.message||'Failed to create user');
+      }
+    })
+    .catch(err=>{console.error('Error:',err);toast('t-err','❌ Error','Failed to create user.');});
+}
+function renderUserList(){
+  fetch('/api/users')
+    .then(res=>res.json())
+    .then(users=>{
+      const list=document.getElementById('umUserList');
+      list.innerHTML=users.map(u=>`<div class="um-user-row"><div class="um-avatar">${u.name.charAt(0).toUpperCase()}</div><div class="um-info"><div class="um-name">${u.name} ${u.role==='admin'?'<span class="admin-badge">Admin</span>':''}</div><div class="um-uname">@${u.username}</div></div>${u.id!=='u1'?`<button class="um-del-btn" onclick="deleteUser('${u.id}')">Remove</button>`:''}</div>`).join('');
+    })
+    .catch(err=>console.error('Error loading users:',err));
+}
+function deleteUser(id){
+  if(!confirm('Remove this user?')) return;
+  fetch(`/api/users/${id}`,{method:'DELETE',headers:{'Content-Type':'application/json'}})
+    .then(res=>res.json())
+    .then(()=>{renderUserList();populateActFilter();toast('t-ok','✅ Removed','User removed.');})
+    .catch(err=>{console.error('Error:',err);toast('t-err','❌ Error','Failed to remove user.');});
+}
+function populateActFilter(){
+  if(!document.getElementById('actFilter')) return; // Element might not exist yet
+  fetch('/api/users')
+    .then(res=>res.json())
+    .then(users=>{
+      const sel=document.getElementById('actFilter');
+      if(sel) sel.innerHTML='<option value="all">All Users</option>'+users.map(u=>`<option value="${u.username}">${u.name} (@${u.username})</option>`).join('');
+    })
+    .catch(err=>{console.error('Error fetching users:',err);const sel=document.getElementById('actFilter');if(sel)sel.innerHTML='<option value="all">All Users</option>';});
+}
+
+// ═══════════════ ACTIVITY ═══════════════
+function logAct(type,title,msg){
+  const entry={type,title,msg,user:currentUser?.name||'System',username:currentUser?.username||'system',ts:Date.now()};
+  fetch('/api/activity',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(entry)})
+    .then(()=>{ activity.unshift(entry); if(activity.length>500) activity=activity.slice(0,500); renderActivity(); })
+    .catch(err=>console.error('Error logging activity:',err));
+}
+function renderActivity(){
+  const filter=document.getElementById('actFilter')?.value||'all';
+  const panel=document.getElementById('np');
+  const items=filter==='all'?activity:activity.filter(a=>a.username===filter);
+  if(!items.length){ panel.innerHTML='<div style="text-align:center;padding:24px 16px;color:var(--mt);font-size:11px;font-family:\'DM Mono\',monospace">No activity yet</div>'; return; }
+  panel.innerHTML=items.map(a=>{
+    const ts=new Date(a.ts).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',hour12:true});
+    const dt=new Date(a.ts).toLocaleDateString('en-IN',{day:'2-digit',month:'short'});
+    return `<div class="notif ${a.type}"><div class="notif-top"><span class="nt">${a.type==='n-new'?'🚨 NEW':a.type==='n-close'?'✅ CLOSED':a.type==='n-update'?'✏️ UPDATE':'📤 BULK'}</span><span class="ntime">${dt} ${ts}</span></div><div class="nm">${a.title}</div><div class="nawb">${a.msg}</div><div class="n-user-tag">👤 ${a.user}</div></div>`;
+  }).join('');
+}
+
+// ═══════════════ TYPE / STATUS SELECT ═══════════════
+function selType(mode,t){
+  if(mode==='new') newType=t; else upType=t;
+  const pre=mode==='new'?'nT':'uT';
+  document.getElementById(pre+'_fake').className='type-opt'+(t==='Fake Attempt'?' sel-fake':'');
+  document.getElementById(pre+'_delay').className='type-opt'+(t==='Delay'?' sel-delay':'');
+  document.getElementById(pre+'_reattempt').className='type-opt'+(t==='Reattempt'?' sel-reattempt':'');
+  document.getElementById(pre+'_other').className='type-opt'+(t==='Other'?' sel-other':'');
+}
+function selStatus(s){
+  mStatus=s;
+  document.getElementById('so_open').className='so'+(s==='open'?' s-open':'');
+  document.getElementById('so_close').className='so'+(s==='close'?' s-close':'');
+}
+
+// ═══════════════ VALIDATE ═══════════════
+function validateNew(){
+  const client=document.getElementById('nClient').value.trim();
+  const awb=document.getElementById('nAwb').value.trim();
+  const remarks=document.getElementById('nRemarks').value.trim();
+  // AWB duplicate check
+  const awbErrEl=document.getElementById('nAwbErr');
+  const awbField=document.getElementById('nAwb');
+  const dupAwb=awb&&data.some(e=>e.awb&&e.awb.trim().toLowerCase()===awb.toLowerCase());
+  if(dupAwb){
+    awbErrEl.style.display='block';
+    awbField.classList.add('err');
+  } else {
+    awbErrEl.style.display='none';
+    awbField.classList.remove('err');
+  }
+  const ok=client&&awb&&remarks&&!dupAwb;
+  document.getElementById('nSubmitBtn').disabled=!ok;
+}
+function validateUpdate(){
+  document.getElementById('uSubmitBtn').disabled=!document.getElementById('uRemarks').value.trim();
+}
+
+// ═══════════════ NEW ESCALATION ═══════════════
+function openNewModal(){
+  const now=new Date();
+  document.getElementById('nDate').value=now.toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'});
+  document.getElementById('nTime').value=now.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',hour12:true});
+  document.getElementById('nLoggedBy').value=currentUser?currentUser.name+' (@'+currentUser.username+')':'Unknown';
+  ['nClient','nOrder','nAwb','nRemarks'].forEach(id=>{const el=document.getElementById(id);el.value='';el.classList.remove('err');});
+  document.getElementById('nAwbErr').style.display='none';
+  document.getElementById('nPayment').value='Prepaid';
+  newType='Fake Attempt';
+  document.getElementById('nT_fake').className='type-opt sel-fake';
+  document.getElementById('nT_delay').className='type-opt';
+  document.getElementById('nT_reattempt').className='type-opt';
+  document.getElementById('nT_other').className='type-opt';
+  document.getElementById('nSubmitBtn').disabled=true;
+  openMo('newMO');
+}
+function submitNew(){
+  const client=document.getElementById('nClient').value.trim();
+  const awb=document.getElementById('nAwb').value.trim();
+  const remarks=document.getElementById('nRemarks').value.trim();
+  if(!client||!awb||!remarks){toast('t-err','⚠️ Missing Fields','Client, AWB and Remarks are required.');return;}
+  const dupAwb=data.some(e=>e.awb&&e.awb.trim().toLowerCase()===awb.toLowerCase());
+  if(dupAwb){toast('t-err','🚫 Duplicate Entry','This AWB has already been escalated. Please avoid re-submission.');return;}
+  const ts=Date.now();
+  const order=document.getElementById('nOrder').value.trim();
+  const e={id:genId(),ts,date:fmtDate(ts),time:fmtTime(ts),client,courier:'',order:order||'—',awb,payment:document.getElementById('nPayment').value,type:newType,remarks,status:'open',addedBy:currentUser?.name||'Unknown',addedByUser:currentUser?.username||''};
+  
+  fetch('/api/escalations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(e)})
+    .then(res=>res.json())
+    .then(()=>{ closeMo('newMO'); logAct('n-new',`🚨 ${client}`,`${newType} · AWB: ${awb}`); nCount++; document.getElementById('nc').textContent=nCount; toast('t-err','🚨 Escalation Logged',`${client} — ${newType}`); })
+    .catch(err=>{ console.error('Error submitting:',err); toast('t-err','❌ Error','Failed to log escalation.'); });
+}
+
+// ═══════════════ VIEW MODAL ═══════════════
+function openViewModal(id){
+  const e=data.find(x=>x.id===id); if(!e) return;
+  const tat=getTAT(e);
+  document.getElementById('viewBody').innerHTML=`
+    <div class="tat-info-bar">
+      <div><div class="ti-lbl">TAT Status (${TAT_HOURS}h SLA)</div><div class="ti-val"><span class="tat-badge ${tat.cls}">${tat.label}</span></div></div>
+      <div style="text-align:right"><div class="ti-lbl">Escalation ID</div><div class="ti-val" style="color:var(--ac);font-family:'DM Mono',monospace;font-size:13px">${e.id}</div></div>
+    </div>
+    <div class="view-section">
+      <div class="vs-title">Shipment Details</div>
+      <div class="vs-grid">
+        <div class="vs-item"><div class="vs-lbl">Client Name</div><div class="vs-val">${e.client}</div></div>
+        <div class="vs-item"><div class="vs-lbl">Courier</div><div class="vs-val">${e.courier||'—'}</div></div>
+        <div class="vs-item"><div class="vs-lbl">Order No.</div><div class="vs-val" style="color:var(--ac)">${e.order}</div></div>
+        <div class="vs-item"><div class="vs-lbl">AWB No.</div><div class="vs-val">${e.awb||'—'}</div></div>
+        <div class="vs-item"><div class="vs-lbl">Payment</div><div class="vs-val">${e.payment||'—'}</div></div>
+        <div class="vs-item"><div class="vs-lbl">Type</div><div class="vs-val"><span class="pb ${typeClass(e.type)}">${e.type}</span></div></div>
+        <div class="vs-item"><div class="vs-lbl">Status</div><div class="vs-val"><span class="sb-badge ${e.status}">${e.status==='open'?'🔴 Open':'✅ Close'}</span></div></div>
+        <div class="vs-item"><div class="vs-lbl">Logged By</div><div class="vs-val" style="color:var(--pp)">${e.addedBy||'—'}</div></div>
+        <div class="vs-item"><div class="vs-lbl">Date</div><div class="vs-val">${e.date}</div></div>
+        <div class="vs-item"><div class="vs-lbl">Time</div><div class="vs-val">${e.time||'—'}</div></div>
+      </div>
+    </div>
+    <div class="view-section">
+      <div class="vs-title">Action / Remarks</div>
+      <div class="vs-remarks">${e.remarks||'—'}</div>
+    </div>
+    <button class="m-save green" onclick="closeMo('viewMO');openUpdateModal('${e.id}')" style="${currentUser?.role==='urbanic'?'display:none':''}">✏️ Edit This Escalation</button>
+  `;
+  openMo('viewMO');
+}
+
+// ═══════════════ UPDATE MODAL ═══════════════
+function openUpdateModal(id){
+  const e=data.find(x=>x.id===id); if(!e) return;
+  selId=id; mStatus=e.status;
+  document.getElementById('moInfo').innerHTML=`
+    <div class="di-item"><div class="di-lbl">Escalation ID</div><div class="di-val" style="color:var(--ac)">${e.id}</div></div>
+    <div class="di-item"><div class="di-lbl">Logged At</div><div class="di-val">${e.date}${e.time?' · '+e.time:''}</div></div>
+    <div class="di-item"><div class="di-lbl">Order No.</div><div class="di-val">${e.order}</div></div>
+    <div class="di-item"><div class="di-lbl">Added By</div><div class="di-val" style="color:var(--pp)">${e.addedBy||'—'}</div></div>
+  `;
+  document.getElementById('uClient').value=e.client||'';
+  document.getElementById('uCourier').value=e.courier||'';
+  document.getElementById('uOrder').value=e.order||'';
+  document.getElementById('uAwb').value=e.awb||'';
+  document.getElementById('uPayment').value=e.payment||'Prepaid';
+  document.getElementById('uRemarks').value=e.remarks||'';
+  document.getElementById('uRemarks').classList.remove('err');
+  selType('up',e.type||'Fake Attempt');
+  selStatus(e.status||'open');
+  document.getElementById('uSubmitBtn').disabled=!(e.remarks||'').trim();
+  openMo('upMO');
+}
+function saveUpdate(){
+  const remarks=document.getElementById('uRemarks').value.trim();
+  if(!remarks){document.getElementById('uRemarks').classList.add('err');toast('t-err','⚠️ Remarks Required','Action/Remarks cannot be empty.');return;}
+  const e=data.find(x=>x.id===selId); if(!e) return;
+  const wasOpen=e.status==='open';
+  const updateData={
+    client:document.getElementById('uClient').value.trim()||e.client,
+    courier:document.getElementById('uCourier').value.trim(),
+    order:document.getElementById('uOrder').value.trim()||e.order,
+    awb:document.getElementById('uAwb').value.trim(),
+    payment:document.getElementById('uPayment').value,
+    type:upType,
+    remarks,
+    status:mStatus,
+    updatedAt:Date.now(),
+    updatedBy:currentUser?.name||'Unknown'
+  };
+  
+  fetch(`/api/escalations/${selId}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(updateData)})
+    .then(res=>res.json())
+    .then(()=>{ closeMo('upMO'); const actType=wasOpen&&mStatus==='close'?'n-close':'n-update'; logAct(actType,wasOpen&&mStatus==='close'?`✅ Closed: ${e.client}`:`✏️ Updated: ${e.client}`,`${upType} · ${updateData.order}`); nCount++; document.getElementById('nc').textContent=nCount; if(wasOpen&&mStatus==='close') toast('t-ok','✅ Escalation Closed',`${e.client} — ${updateData.order}`); else toast('t-ok','💾 Updated',`${e.client} — ${updateData.order}`); })
+    .catch(err=>{ console.error('Error updating:',err); toast('t-err','❌ Error','Failed to update escalation.'); });
+}
+
+function delEntry(id,ev){
+  ev.stopPropagation();
+  if(!confirm('Delete this escalation? This cannot be undone.')) return;
+  fetch(`/api/escalations/${id}`,{method:'DELETE',headers:{'Content-Type':'application/json'}})
+    .then(res=>res.json())
+    .then(()=>{ data=data.filter(x=>x.id!==id); render(); updateStats(); updateTabs(); toast('t-info','🗑️ Deleted','Escalation removed.'); })
+    .catch(err=>{ console.error('Error deleting:',err); toast('t-err','❌ Error','Failed to delete escalation.'); });
+}
+
+// ═══════════════ BULK ═══════════════
+function openBulkModal(tab){ document.getElementById('excelMapSec').style.display='none'; document.getElementById('previewWrap').style.display='none'; document.getElementById('fileInp').value=''; openMo('bulkMO'); }
+
+function openDriveLink(){
+  const url=document.getElementById('driveUrlInp').value.trim();
+  if(!url){toast('t-err','⚠️ No Link','Please paste a Google Drive shareable link.');return;}
+  // Try to extract file ID from standard Drive share URLs
+  const match=url.match(/\/d\/([a-zA-Z0-9_-]{25,})/)||url.match(/id=([a-zA-Z0-9_-]{25,})/);
+  if(!match){toast('t-err','❌ Invalid Link','Could not parse a valid Google Drive file ID from the link. Make sure the file is shared publicly.');return;}
+  const fileId=match[1];
+  const exportUrl=`https://docs.google.com/spreadsheets/d/${fileId}/export?format=xlsx`;
+  toast('t-info','🔗 Loading…','Attempting to fetch file from Google Drive…');
+  fetch(exportUrl).then(r=>{if(!r.ok)throw new Error('Fetch failed');return r.arrayBuffer();}).then(buf=>{
+    const wb=XLSX.read(buf,{type:'array'});
+    const ws=wb.Sheets[wb.SheetNames[0]];
+    const json=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+    if(json.length<2){toast('t-err','❌ Empty File','No data rows found in Drive file.');return;}
+    excelHdrs=json[0].map(h=>String(h).trim()); excelRows=json.slice(1).filter(r=>r.some(c=>String(c).trim()));
+    buildMapUI('excelMapGrid','excel',excelHdrs); buildPreview(excelHdrs,excelRows.slice(0,5));
+    document.getElementById('excelInfo').textContent=`✅ Loaded ${excelRows.length} rows from Google Drive file.`;
+    document.getElementById('excelMapSec').style.display='flex'; document.getElementById('previewWrap').style.display='block';
+    toast('t-ok','✅ Drive File Loaded',`${excelRows.length} rows ready to import.`);
+  }).catch(()=>{toast('t-err','❌ Access Denied','Could not fetch the file. Make sure the link is set to "Anyone with the link can view".');});
+}
+function connectGoogleDrive(){
+  toast('t-info','🟢 Google Drive','Direct Google Drive integration requires OAuth setup. Please use a shareable link above, or contact your admin to enable full Drive integration.');
+}
+
+function onDragLeave(){document.getElementById('dropZone').classList.remove('drag');}
+function onDrop(e){e.preventDefault();onDragLeave();if(e.dataTransfer.files[0])handleFile(e.dataTransfer.files[0]);}
+function handleFile(file){
+  if(!file) return;
+  const ext=file.name.split('.').pop().toLowerCase();
+  if(!['xlsx','xls','csv'].includes(ext)){toast('t-err','❌ Invalid File','Use .xlsx, .xls or .csv');return;}
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    const wb=XLSX.read(ev.target.result,{type:'array'});
+    const ws=wb.Sheets[wb.SheetNames[0]];
+    const json=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+    if(json.length<2){toast('t-err','❌ Empty File','No data rows found.');return;}
+    excelHdrs=json[0].map(h=>String(h).trim()); excelRows=json.slice(1).filter(r=>r.some(c=>String(c).trim()));
+    buildMapUI('excelMapGrid','excel',excelHdrs); buildPreview(excelHdrs,excelRows.slice(0,5));
+    document.getElementById('excelInfo').textContent=`✅ Loaded ${excelRows.length} rows from "${file.name}".`;
+    document.getElementById('excelMapSec').style.display='flex'; document.getElementById('previewWrap').style.display='block';
+  };
+  reader.readAsArrayBuffer(file);
+}
+function buildMapUI(gridId,prefix,headers){
+  const grid=document.getElementById(gridId); grid.innerHTML='';
+  const opts='<option value="">— skip —</option>'+headers.map((h,i)=>`<option value="${i}">${h}</option>`).join('');
+  FIELDS.forEach(f=>{ const autoIdx=headers.findIndex(h=>AUTO_MAP[f]?.includes(h.toLowerCase().trim())); const row=document.createElement('div'); row.className='col-map-row'; row.innerHTML=`<div class="col-field">${FLABELS[f]}</div><div style="text-align:center;color:var(--mt);font-size:12px">→</div><select class="col-sel" id="${prefix}_${f}">${opts}</select>`; grid.appendChild(row); if(autoIdx>=0) document.getElementById(`${prefix}_${f}`).value=autoIdx; });
+}
+function buildPreview(headers,rows){ const t=document.getElementById('previewTbl'); t.innerHTML=`<thead><tr>${headers.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join('')}</tr>`).join('')}</tbody>`; }
+function confirmImport(){ const maps={}; FIELDS.forEach(f=>{const v=document.getElementById(`excel_${f}`)?.value; maps[f]=v!==''&&v!==undefined?parseInt(v):-1;}); doImport(excelRows,maps); closeMo('bulkMO'); }
+function doImport(rows,maps){ let count=0; const ts=Date.now(); const escalations=[]; rows.forEach((r,i)=>{ const get=f=>maps[f]>=0?String(r[maps[f]]??'').trim():''; const client=get('client'); const order=get('order'); if(!client&&!order) return; const rawType=get('type').toLowerCase(); const type=rawType.includes('delay')?'Delay':rawType.includes('fake')?'Fake Attempt':rawType.includes('reattempt')?'Reattempt':'Other'; const ets=ts+i; escalations.push({id:genId(),ts:ets,date:fmtDate(ets),time:fmtTime(ets),client:client||'Unknown',courier:get('courier'),order:order||`ROW-${i+1}`,awb:get('awb'),payment:get('payment')||'Prepaid',type,remarks:get('remarks')||'Imported via Bulk Upload',status:'open',addedBy:currentUser?.name||'Bulk Import',addedByUser:currentUser?.username||''}); count++; }); if(count>0){ Promise.all(escalations.map(e=>fetch('/api/escalations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(e)}))).then(()=>{ logAct('n-bulk',`📤 Bulk Import`,`${count} escalations imported`); nCount++; document.getElementById('nc').textContent=nCount; toast('t-bulk','📤 Import Complete',`${count} escalations added!`); }).catch(err=>{ console.error('Error importing:',err); toast('t-err','❌ Error','Some escalations failed to import.'); }); } return count; }
+
+// ═══════════════ RENDER ═══════════════
+function setTab(tab,el){ activeTab=tab; document.querySelectorAll('.ship-tab').forEach(t=>t.classList.remove('active')); el.classList.add('active'); const titles={all:'📋 All Escalations',fake:'🚫 Fake Attempt',delay:'⏰ Delay in Delivery',reattempt:'🔄 Reattempt',other:'📌 Other',tab_open:'🔴 Open Escalations',tab_close:'✅ Closed Escalations'}; document.getElementById('tableTitle').textContent=titles[tab]||'Escalations'; render(); }
+function filterStat(f,el){ statFilter=f; activeTab='all'; document.querySelectorAll('.stat').forEach(s=>s.classList.remove('active')); el.classList.add('active'); document.querySelectorAll('.ship-tab').forEach((t,i)=>{if(i===0)t.classList.add('active');else t.classList.remove('active');}); document.getElementById('tableTitle').textContent={all:'📋 All Escalations',open:'🔴 Open Escalations',close:'✅ Closed Escalations'}[f]||'📋 All Escalations'; render(); }
+function getFiltered(){
+  let d=[...data];
+  const q=document.getElementById('srchInp').value.toLowerCase();
+  if(q) d=d.filter(e=>[e.client,e.order,e.awb,e.courier,e.type,e.remarks,e.id].join(' ').toLowerCase().includes(q));
+  if(activeTab==='fake') d=d.filter(e=>e.type==='Fake Attempt');
+  else if(activeTab==='delay') d=d.filter(e=>e.type==='Delay');
+  else if(activeTab==='reattempt') d=d.filter(e=>e.type==='Reattempt');
+  else if(activeTab==='other') d=d.filter(e=>e.type!=='Fake Attempt'&&e.type!=='Delay'&&e.type!=='Reattempt');
+  else if(activeTab==='tab_open') d=d.filter(e=>e.status==='open');
+  else if(activeTab==='tab_close') d=d.filter(e=>e.status==='close');
+  if(statFilter==='open') d=d.filter(e=>e.status==='open');
+  else if(statFilter==='close') d=d.filter(e=>e.status==='close');
+  // Date range filter
+  const from=document.getElementById('fFrom').value;
+  const to=document.getElementById('fTo').value;
+  if(from){ const fd=new Date(from); d=d.filter(e=>new Date(e.ts)>=fd); }
+  if(to){ const td=new Date(to); td.setHours(23,59,59,999); d=d.filter(e=>new Date(e.ts)<=td); }
+  return d;
+}
+
+function render(){
+  const rows=getFiltered(); const tb=document.getElementById('tb');
+  if(!rows.length){tb.innerHTML=`<tr><td colspan="13"><div class="empty"><div class="empty-ico">📭</div>No escalations found</div></td></tr>`;return;}
+  tb.innerHTML=rows.map((e,i)=>{
+    const isOpen=e.status==='open'; const tc=typeClass(e.type); const tat=getTAT(e);
+    const dt=e.date+(e.time?`<br><span style="font-size:10px;color:var(--mt)">${e.time}</span>`:'');
+    return `<tr class="${isOpen?'open-row':''}">
+      <td class="mono" style="font-size:10px;color:var(--mt)">${i+1}</td>
+      <td class="mono" style="font-size:11px;white-space:nowrap;line-height:1.5">${dt}</td>
+      <td style="font-weight:600;color:var(--dark)">${e.client}</td>
+      <td style="color:var(--mt);font-size:11px">${e.courier||'—'}</td>
+      <td class="mono" style="font-size:11px;color:var(--ac);font-weight:600">${e.order}</td>
+      <td class="mono" style="font-size:11px">${e.awb||'—'}</td>
+      <td><span class="pay-badge">${e.payment||'—'}</span></td>
+      <td><span class="pb ${tc}">${e.type}</span></td>
+      <td style="color:var(--mt);font-size:11px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(e.remarks||'').replace(/"/g,'&quot;')}">${e.remarks||'—'}</td>
+      <td><span class="tat-badge ${tat.cls}">${tat.label}</span></td>
+      <td><span class="sb-badge ${e.status}">${isOpen?'🔴 Open':'✅ Close'}</span></td>
+      <td style="font-size:10px;color:var(--pp);font-family:'DM Mono',monospace;white-space:nowrap">${e.addedBy||'—'}</td>
+      <td onclick="event.stopPropagation()" style="display:flex;gap:4px;align-items:center;flex-wrap:nowrap">
+        <button class="act-btn vb" onclick="openViewModal('${e.id}')" title="View">👁</button>
+        ${currentUser?.role!=='urbanic'?`<button class="act-btn ub" onclick="openUpdateModal('${e.id}')" title="Update">✏️</button><button class="act-btn db" onclick="delEntry('${e.id}',event)" title="Delete">✕</button>`:''}
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function updateStats(){ document.getElementById('sTotal').textContent=data.length; document.getElementById('sOpen').textContent=data.filter(e=>e.status==='open').length; document.getElementById('sClosed').textContent=data.filter(e=>e.status==='close').length; }
+function updateTabs(){ document.getElementById('tc_all').textContent=data.length; document.getElementById('tc_fake').textContent=data.filter(e=>e.type==='Fake Attempt').length; document.getElementById('tc_delay').textContent=data.filter(e=>e.type==='Delay').length; document.getElementById('tc_reattempt').textContent=data.filter(e=>e.type==='Reattempt').length; document.getElementById('tc_other').textContent=data.filter(e=>e.type!=='Fake Attempt'&&e.type!=='Delay'&&e.type!=='Reattempt').length; document.getElementById('tc_tab_open').textContent=data.filter(e=>e.status==='open').length; document.getElementById('tc_tab_close').textContent=data.filter(e=>e.status==='close').length; }
+
+// ═══════════════ HELPERS ═══════════════
+function openMo(id){document.getElementById(id).classList.add('open');}
+function closeMo(id){document.getElementById(id).classList.remove('open');}
+function toast(type,title,msg){ const icons={'t-ok':'✅','t-err':'🚨','t-info':'ℹ️','t-bulk':'📤'}; const d=document.createElement('div'); d.className=`toast ${type}`; d.innerHTML=`<div class="ti">${icons[type]||'ℹ️'}</div><div class="tco"><div class="ttl">${title}</div><div class="tmg">${msg}</div></div>`; document.getElementById('tc').appendChild(d); setTimeout(()=>{d.classList.add('fo');setTimeout(()=>d.remove(),300);},3800); }
+function clearFilters(){
+  document.getElementById('fFrom').value='';
+  document.getElementById('fTo').value='';
+  render();
+}
+function downloadFiltered(){
+  const rows=getFiltered();
+  if(!rows.length){toast('t-info','No Data','No rows match current filters.');return;}
+  const from=document.getElementById('fFrom').value;
+  const to=document.getElementById('fTo').value;
+  const label=from||to?`${from||'start'}_to_${to||'end'}`:'Filtered';
+  const out=rows.map((e,i)=>({'#':i+1,'Date':e.date,'Time':e.time||'','Client Name':e.client,'Order No.':e.order,'AWB No.':e.awb||'','Payment Mode':e.payment||'','Escalation Type':e.type,'Action / Remarks':e.remarks||'','Status':e.status==='open'?'Open':'Close','TAT':getTAT(e).label,'Added By':e.addedBy||'','ID':e.id}));
+  const ws=XLSX.utils.json_to_sheet(out);
+  ws['!cols']=[{wch:4},{wch:14},{wch:10},{wch:18},{wch:14},{wch:16},{wch:12},{wch:20},{wch:35},{wch:10},{wch:12},{wch:16},{wch:14}];
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'Escalations');
+  XLSX.writeFile(wb,`Escalation_${label}.xlsx`);
+  toast('t-ok','📥 Downloaded',`${rows.length} rows exported!`);
+}
+function downloadSample(){
+  const sample=[
+    ['Client Name','AWB No.','Order No. (Optional)','Payment Mode','Escalation Type','Action / Remarks'],
+    ['Asaya','AWB-5001','ORD-1001','Prepaid','Fake Attempt','Customer denied delivery attempt, rescheduling'],
+    ['Urbanic','AWB-5002','ORD-1002','COD','Delay','Package stuck at hub since 3 days, escalated to courier'],
+    ['Bewakoof','AWB-5003','ORD-1003','Prepaid','Reattempt','Customer requested reattempt on next working day'],
+    ['Mango','AWB-5004','','COD','Fake Attempt','Delivery marked without attempt, complaint raised'],
+    ['Zara','AWB-5005','ORD-1005','Prepaid','Other','Wrong product delivered, return initiated'],
+    ['Nykaa','AWB-5006','ORD-1006','COD','Delay','Transit delay due to weather, ETA updated'],
+  ];
+  const ws=XLSX.utils.aoa_to_sheet(sample);
+  ws['!cols']=[{wch:14},{wch:14},{wch:18},{wch:14},{wch:16},{wch:42}];
+  // Style header row
+  const hdrStyle={font:{bold:true},fill:{fgColor:{rgb:'F0A500'}},alignment:{horizontal:'center'}};
+  ['A1','B1','C1','D1','E1','F1'].forEach(cell=>{ if(!ws[cell]) return; ws[cell].s=hdrStyle; });
+  // Add data validation note
+  ws['D2']={v:'Prepaid',t:'s'}; ws['D3']={v:'COD',t:'s'};
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'Sample Escalation');
+  // Add a notes sheet
+  const notesData=[
+    ['Field','Required?','Valid Values / Notes'],
+    ['Client Name','Yes','Name of the client/brand'],
+    ['AWB No.','YES - MANDATORY','Unique AWB number. Duplicates will be rejected.'],
+    ['Order No.','No (Optional)','Leave blank if not available'],
+    ['Payment Mode','Yes','Only: Prepaid or COD'],
+    ['Escalation Type','Yes','Only: Fake Attempt, Delay, Reattempt, Other'],
+    ['Action / Remarks','Yes','Describe the issue and action taken'],
+  ];
+  const wsNotes=XLSX.utils.aoa_to_sheet(notesData);
+  wsNotes['!cols']=[{wch:18},{wch:18},{wch:48}];
+  XLSX.utils.book_append_sheet(wb,wsNotes,'Field Guide');
+  XLSX.writeFile(wb,'Sample_Escalation_Upload.xlsx');
+  toast('t-ok','📄 Sample Downloaded','Includes Field Guide sheet with all rules!');
+}
+function toggleExportMenu(){
+  const menu=document.getElementById('exportMenu');
+  if(menu.classList.contains('open')){ menu.classList.remove('open'); return; }
+  buildExportMonths();
+  menu.classList.add('open');
+}
+function closeExportMenu(){ document.getElementById('exportMenu').classList.remove('open'); }
+document.addEventListener('click',function(e){ if(!document.getElementById('exportWrap')?.contains(e.target)) closeExportMenu(); });
+
+// Session restore on page load
+try{
+  const s=JSON.parse(sessionStorage.getItem('esc_session'));
+  if(s&&s.id){
+    currentUser=s;
+    document.getElementById('loginScreen').style.display='none';
+    document.getElementById('appWrap').style.display='block';
+    document.getElementById('uName').textContent=s.name;
+    document.getElementById('uAvatar').textContent=s.name.charAt(0).toUpperCase();
+    if(s.role==='admin') document.getElementById('mgrBtn').style.display='';
+    if(s.role==='urbanic'){ document.getElementById('exportWrap').style.display='none'; document.getElementById('mgrBtn').style.display='none'; }
+    else { document.getElementById('exportWrap').style.display=''; }
+    populateActFilter();
+    loadEscalations();
+    loadActivity();
+  }
+}catch(e){}
+
+// Backdrop close
+['newMO','upMO','bulkMO','umMO','viewMO'].forEach(id=>document.getElementById(id).addEventListener('click',function(e){if(e.target===this)closeMo(id);}));
+
+function buildExportMonths(){
+  const monthMap={};
+  data.forEach(e=>{
+    if(!e.ts) return;
+    const d=new Date(e.ts);
+    const key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    monthMap[key]=(monthMap[key]||0)+1;
+  });
+  const keys=Object.keys(monthMap).sort().reverse();
+  const container=document.getElementById('emMonths');
+  if(!keys.length){ container.innerHTML='<div style="padding:10px 13px;font-size:11px;color:var(--mt);font-family:\'DM Mono\',monospace">No data yet</div>'; return; }
+  container.innerHTML=keys.map(k=>{
+    const [yr,mo]=k.split('-');
+    const label=new Date(yr,mo-1,1).toLocaleString('en-IN',{month:'long',year:'numeric'});
+    return `<button class="em-month-btn" onclick="downloadByMonth('${k}');closeExportMenu()"><span>${label}</span><span class="em-month-count">${monthMap[k]}</span></button>`;
+  }).join('');
+}
+
+function downloadByMonth(key){
+  const [yr,mo]=key.split('-').map(Number);
+  const rows=data.filter(e=>{ if(!e.ts) return false; const d=new Date(e.ts); return d.getFullYear()===yr&&d.getMonth()+1===mo; });
+  if(!rows.length){toast('t-info','No Data','No entries for this month.');return;}
+  const mname=new Date(yr,mo-1,1).toLocaleString('en-IN',{month:'long'});
+  const out=rows.map((e,i)=>({'#':i+1,'Date':e.date,'Time':e.time||'','Client Name':e.client,'Order No.':e.order,'AWB No.':e.awb||'','Payment Mode':e.payment||'','Escalation Type':e.type,'Action / Remarks':e.remarks||'','Status':e.status==='open'?'Open':'Close','TAT':getTAT(e).label,'Added By':e.addedBy||'','ID':e.id}));
+  const ws=XLSX.utils.json_to_sheet(out);
+  ws['!cols']=[{wch:4},{wch:14},{wch:10},{wch:18},{wch:16},{wch:14},{wch:16},{wch:12},{wch:20},{wch:35},{wch:10},{wch:12},{wch:16},{wch:14}];
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,`${mname} ${yr}`.slice(0,31));
+  XLSX.writeFile(wb,`Escalation_${mname}_${yr}.xlsx`);
+  toast('t-ok','📥 Downloaded',`${rows.length} rows for ${mname} ${yr}`);
+}
+
+function downloadExcel(){ if(!data.length){toast('t-info','No Data','Nothing to export yet.');return;} const rows=data.map((e,i)=>({'#':i+1,'Date':e.date,'Time':e.time||'','Client Name':e.client,'Order No.':e.order,'AWB No.':e.awb||'','Payment Mode':e.payment||'','Escalation Type':e.type,'Action / Remarks':e.remarks||'','Status':e.status==='open'?'Open':'Close','TAT':getTAT(e).label,'Added By':e.addedBy||'','ID':e.id})); const ws=XLSX.utils.json_to_sheet(rows); ws['!cols']=[{wch:4},{wch:14},{wch:10},{wch:18},{wch:16},{wch:14},{wch:16},{wch:12},{wch:20},{wch:35},{wch:10},{wch:12},{wch:16},{wch:14}]; const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'Escalation Matrix'); XLSX.writeFile(wb,`Escalation_Matrix_${new Date().toISOString().split('T')[0]}.xlsx`); toast('t-ok','📥 Exported','Excel file downloaded!'); }
+</script>
+</body>
+</html>
