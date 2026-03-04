@@ -1,3 +1,7 @@
+import eventlet
+# eventlet must be monkey-patched before other imports to work with gunicorn+eventlet
+eventlet.monkey_patch()
+
 from flask import Flask, render_template, request, jsonify
 from flask_socketio import SocketIO, emit, join_room, leave_room
 import json
@@ -190,4 +194,6 @@ def handle_sync_request():
 
 if __name__ == '__main__':
     # use host 0.0.0.0 so the server listens on all interfaces
-    socketio.run(app)
+    port = int(os.environ.get('PORT', 5000))
+    debug = os.environ.get('FLASK_ENV') == 'development'
+    socketio.run(app, host='0.0.0.0', port=port, debug=debug)
