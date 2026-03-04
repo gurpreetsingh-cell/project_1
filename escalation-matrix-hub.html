@@ -277,7 +277,7 @@ td{padding:9px 10px;font-size:12px;vertical-align:middle}
 .preview-tbl tr:last-child td{border-bottom:none}
 
 /* TOAST */
-#tc{position:fixed;bottom:18px;right:18px;z-index:9999;display:flex;flex-direction:column;gap:7px;pointer-events:none}
+#toastContainer{position:fixed;bottom:18px;right:18px;z-index:9999;display:flex;flex-direction:column;gap:7px;pointer-events:none}
 .toast{display:flex;align-items:flex-start;gap:10px;background:var(--sf);border:1px solid var(--bd);border-radius:10px;padding:11px 14px;min-width:255px;max-width:310px;box-shadow:0 4px 20px rgba(0,0,0,.13);animation:toastIn .28s ease;pointer-events:auto}
 .toast.fo{opacity:0;transition:opacity .3s}
 .toast.t-ok{border-left:3px solid var(--gn)}
@@ -327,7 +327,7 @@ td{padding:9px 10px;font-size:12px;vertical-align:middle}
     <div class="hdr-clock" id="hdrClock">—</div>
     <div class="user-chip"><div class="u-av" id="uAvatar">?</div><span id="uName">—</span></div>
     <button class="hdr-btn btn-new" onclick="openNewModal()">🚨 New Escalation</button>
-    <button class="hdr-btn btn-bulk" onclick="openBulkModal('excel')">📤 Bulk Upload</button>
+    <button class="hdr-btn btn-bulk" onclick="openBulkModal()">📤 Bulk Upload</button>
     <button class="hdr-btn btn-mgr" id="mgrBtn" onclick="openModal('umMO')" style="display:none">👥 Users</button>
     <div class="export-wrap" id="exportWrap">
       <button class="hdr-btn btn-export" onclick="toggleExportMenu()">📥 Export ▾</button>
@@ -454,7 +454,7 @@ td{padding:9px 10px;font-size:12px;vertical-align:middle}
         <div class="f-grp">
           <div class="f-lbl">AWB No. <span class="req">* required</span></div>
           <input class="m-inp" id="nAwb" placeholder="AWB-XXXX" oninput="validateNew()"/>
-          <div class="awb-err" id="nAwbErr" style="display:none;font-size:10px;color:var(--rd);font-family:'DM Mono',monospace;margin-top:3px">🚫 Duplicate Entry: This AWB has already been escalated. Please avoid re-submission.</div>
+          <div id="nAwbErr" style="display:none;font-size:10px;color:var(--rd);font-family:'DM Mono',monospace;margin-top:3px">🚫 Duplicate Entry: This AWB has already been escalated. Please avoid re-submission.</div>
         </div>
       </div>
       <div class="f-grp">
@@ -613,7 +613,8 @@ td{padding:9px 10px;font-size:12px;vertical-align:middle}
   </div>
 </div>
 
-<div id="tc"></div>
+<!-- TOAST CONTAINER — renamed to avoid ID clash with tab-count variable -->
+<div id="toastContainer"></div>
 
 <script>
 // ═══════════════ STATE ═══════════════
@@ -626,280 +627,299 @@ let upType = 'Fake Attempt';
 let activeTab = 'all';
 let statFilter = 'open';
 let nCount = 0;
-let excelRows=[], excelHdrs=[];
-let driveRows=[], driveHdrs=[];
+let excelRows = [], excelHdrs = [];
 let currentUser = null;
 
-// socket connection
 const socket = io();
 
-const FIELDS=['client','awb','order','payment','type','remarks'];
-const FLABELS={client:'Client Name',awb:'AWB No. (Mandatory)',order:'Order No. (Optional)',payment:'Payment Mode',type:'Escalation Type',remarks:'Action / Remarks'};
-const AUTO_MAP={client:['client','client name','customer','name'],courier:['courier','courier name'],order:['order','order no','order no.','order_no','order number'],awb:['awb','awb no','awb no.','awb number','tracking'],payment:['payment','payment mode'],type:['type','escalation type','issue type'],remarks:['remarks','action','action/remarks','notes','comments']};
+const FIELDS = ['client','awb','order','payment','type','remarks'];
+const FLABELS = {client:'Client Name',awb:'AWB No. (Mandatory)',order:'Order No. (Optional)',payment:'Payment Mode',type:'Escalation Type',remarks:'Action / Remarks'};
+const AUTO_MAP = {client:['client','client name','customer','name'],courier:['courier','courier name'],order:['order','order no','order no.','order_no','order number'],awb:['awb','awb no','awb no.','awb number','tracking'],payment:['payment','payment mode'],type:['type','escalation type','issue type'],remarks:['remarks','action','action/remarks','notes','comments']};
 const TAT_HOURS = 72;
 
+// ═══════════════ TOAST ═══════════════
+// FIX: renamed container id to "toastContainer" to avoid conflict with variable "tc" used in tab counts
+function toast(type, title, msg) {
+  const icons = {'t-ok':'✅','t-err':'🚨','t-info':'ℹ️','t-bulk':'📤'};
+  const d = document.createElement('div');
+  d.className = `toast ${type}`;
+  d.innerHTML = `<div class="ti">${icons[type]||'ℹ️'}</div><div class="tco"><div class="ttl">${title}</div><div class="tmg">${msg}</div></div>`;
+  document.getElementById('toastContainer').appendChild(d);
+  setTimeout(() => { d.classList.add('fo'); setTimeout(() => d.remove(), 300); }, 3800);
+}
+
 // ═══════════════ LOGIN ═══════════════
-function doLogin(){
-  const username=document.getElementById('lUser').value.trim();
-  const password=document.getElementById('lPass').value;
-  
-  console.log('Login attempt:', username);
-  
-  if(!username||!password){
-    document.getElementById('lErr').style.display='block';
-    document.getElementById('lErr').textContent='Username and password required';
+function doLogin() {
+  const username = document.getElementById('lUser').value.trim();
+  const password = document.getElementById('lPass').value;
+  if (!username || !password) {
+    document.getElementById('lErr').style.display = 'block';
+    document.getElementById('lErr').textContent = 'Username and password required';
     return;
   }
-  
-  fetch('/api/login',{
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({username,password})
+  fetch('/api/login', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({username, password})
   })
-  .then(res=>{
-    console.log('Login response status:', res.status);
-    return res.json();
-  })
-  .then(data=>{
-    console.log('Login response data:', data);
-    if(data.status==='success'){
-      const user=data.user;
-      currentUser=user;
-      console.log('Login successful for user:', user.username);
-      try{ sessionStorage.setItem('esc_session',JSON.stringify({id:user.id,username:user.username,name:user.name,role:user.role})); }catch(e){}
-      document.getElementById('loginScreen').style.display='none';
-      document.getElementById('appWrap').style.display='block';
-      document.getElementById('uName').textContent=user.name;
-      document.getElementById('uAvatar').textContent=user.name.charAt(0).toUpperCase();
-      if(user.role==='admin') document.getElementById('mgrBtn').style.display='';
-      if(user.role==='urbanic'){ document.getElementById('exportWrap').style.display='none'; document.getElementById('mgrBtn').style.display='none'; }
-      else { document.getElementById('exportWrap').style.display=''; }
-      populateActFilter();
-      render(); updateStats(); updateTabs(); renderActivity();
-      document.getElementById('lErr').style.display='none';
+  .then(res => res.json())
+  .then(resp => {
+    if (resp.status === 'success') {
+      initSession(resp.user);
+      document.getElementById('lErr').style.display = 'none';
     } else {
-      console.log('Login failed:', data.message);
-      document.getElementById('lErr').style.display='block';
-      document.getElementById('lErr').textContent=data.message||'Invalid username or password';
+      document.getElementById('lErr').style.display = 'block';
+      document.getElementById('lErr').textContent = resp.message || 'Invalid username or password';
       document.getElementById('lUser').classList.add('err');
       document.getElementById('lPass').classList.add('err');
     }
   })
-  .catch(err=>{
-    console.error('Login error:',err);
-    document.getElementById('lErr').style.display='block';
-    document.getElementById('lErr').textContent='Connection error. Please try again.';
+  .catch(() => {
+    document.getElementById('lErr').style.display = 'block';
+    document.getElementById('lErr').textContent = 'Connection error. Please try again.';
   });
 }
-function doLogout(){
-  currentUser=null;
-  try{ sessionStorage.removeItem('esc_session'); }catch(e){}
-  document.getElementById('loginScreen').style.display='flex';
-  document.getElementById('appWrap').style.display='none';
-  document.getElementById('lUser').value=''; document.getElementById('lPass').value='';
-  document.getElementById('lErr').style.display='none';
-  ['lUser','lPass'].forEach(id=>document.getElementById(id).classList.remove('err'));
+
+function initSession(user) {
+  currentUser = user;
+  try { sessionStorage.setItem('esc_session', JSON.stringify({id:user.id,username:user.username,name:user.name,role:user.role})); } catch(e) {}
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('appWrap').style.display = 'block';
+  document.getElementById('uName').textContent = user.name;
+  document.getElementById('uAvatar').textContent = user.name.charAt(0).toUpperCase();
+  document.getElementById('mgrBtn').style.display = (user.role === 'admin') ? '' : 'none';
+  document.getElementById('exportWrap').style.display = (user.role === 'urbanic') ? 'none' : '';
+  populateActFilter();
+  loadEscalations();
+  loadActivity();
 }
 
-// ═══════════════ DATA ═══════════════
-// "data" and "activity" state defined earlier; avoid redeclaring here
+function doLogout() {
+  currentUser = null;
+  try { sessionStorage.removeItem('esc_session'); } catch(e) {}
+  document.getElementById('loginScreen').style.display = 'flex';
+  document.getElementById('appWrap').style.display = 'none';
+  document.getElementById('lUser').value = '';
+  document.getElementById('lPass').value = '';
+  document.getElementById('lErr').style.display = 'none';
+  ['lUser','lPass'].forEach(id => document.getElementById(id).classList.remove('err'));
+  data = []; activity = []; nCount = 0;
+}
 
-// Socket.IO Events
-socket.on('connect',()=>{ console.log('Connected to server'); loadEscalations(); loadActivity(); });
-socket.on('escalation_added',(esc)=>{ data.unshift(esc); render(); updateStats(); updateTabs(); });
-socket.on('escalation_updated',(esc)=>{ const idx=data.findIndex(e=>e.id===esc.id); if(idx>=0) data[idx]=esc; render(); updateStats(); updateTabs(); });
-socket.on('escalation_deleted',(payload)=>{ data=data.filter(e=>e.id!==payload.id); render(); updateStats(); updateTabs(); });
-socket.on('activity_logged',(entry)=>{ activity.unshift(entry); renderActivity(); });
+// ═══════════════ SESSION RESTORE (runs once on load) ═══════════════
+try {
+  const s = JSON.parse(sessionStorage.getItem('esc_session'));
+  if (s && s.id) initSession(s);
+} catch(e) {}
 
-async function loadEscalations(){ try{ const res=await fetch('/api/escalations'); data=await res.json(); render(); updateStats(); updateTabs(); }catch(e){ console.error('Error loading escalations:',e); } }
-async function loadActivity(){ try{ const res=await fetch('/api/activity'); activity=await res.json(); renderActivity(); }catch(e){ console.error('Error loading activity:',e); } }
-async function save(){ /* Server handles persistence */ }
-async function saveAct(){ /* Socket.IO handles propagation */ }
-function genId(){ return 'ESC-'+Date.now().toString(36).toUpperCase().slice(-7); }
-function fmtDate(ts){ return new Date(ts).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}); }
-function fmtTime(ts){ return new Date(ts).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',hour12:true}); }
-function typeClass(t){ return t==='Fake Attempt'?'fake-attempt':t==='Delay'?'delay':t==='Reattempt'?'reattempt':'other'; }
+// ═══════════════ SOCKET ═══════════════
+socket.on('connect', () => { loadEscalations(); loadActivity(); });
+socket.on('escalation_added', (esc) => { data.unshift(esc); render(); updateStats(); updateTabs(); });
+socket.on('escalation_updated', (esc) => { const idx = data.findIndex(e => e.id === esc.id); if (idx >= 0) data[idx] = esc; render(); updateStats(); updateTabs(); });
+socket.on('escalation_deleted', (payload) => { data = data.filter(e => e.id !== payload.id); render(); updateStats(); updateTabs(); });
+socket.on('activity_logged', (entry) => { activity.unshift(entry); renderActivity(); });
 
-function getTAT(e){
-  if(e.status==='close') return {label:'Closed',cls:'tat-ok',pct:100};
-  const hrs=(Date.now()-e.ts)/3600000;
-  const pct=Math.min(100,(hrs/TAT_HOURS)*100);
-  if(hrs>=TAT_HOURS) return {label:'BREACHED',cls:'tat-breach',pct:100};
-  if(hrs>=TAT_HOURS*0.75) return {label:Math.round(TAT_HOURS-hrs)+'h left',cls:'tat-warn',pct};
-  return {label:Math.round(TAT_HOURS-hrs)+'h left',cls:'tat-ok',pct};
+// ═══════════════ DATA LOADING ═══════════════
+async function loadEscalations() {
+  try { const res = await fetch('/api/escalations'); data = await res.json(); render(); updateStats(); updateTabs(); } catch(e) { console.error('Error loading escalations:', e); }
+}
+async function loadActivity() {
+  try { const res = await fetch('/api/activity'); activity = await res.json(); renderActivity(); } catch(e) { console.error('Error loading activity:', e); }
+}
+
+function genId() { return 'ESC-' + Date.now().toString(36).toUpperCase().slice(-7); }
+function fmtDate(ts) { return new Date(ts).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}); }
+function fmtTime(ts) { return new Date(ts).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',hour12:true}); }
+function typeClass(t) { return t==='Fake Attempt'?'fake-attempt':t==='Delay'?'delay':t==='Reattempt'?'reattempt':'other'; }
+
+function getTAT(e) {
+  if (e.status === 'close') return {label:'Closed', cls:'tat-ok', pct:100};
+  const hrs = (Date.now() - e.ts) / 3600000;
+  const pct = Math.min(100, (hrs / TAT_HOURS) * 100);
+  if (hrs >= TAT_HOURS) return {label:'BREACHED', cls:'tat-breach', pct:100};
+  if (hrs >= TAT_HOURS * 0.75) return {label:Math.round(TAT_HOURS - hrs) + 'h left', cls:'tat-warn', pct};
+  return {label:Math.round(TAT_HOURS - hrs) + 'h left', cls:'tat-ok', pct};
 }
 
 // Clock
-function tick(){ const n=new Date(); document.getElementById('hdrClock').textContent=n.toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})+' · '+n.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:true}); }
-tick(); setInterval(tick,1000);
+function tick() {
+  const n = new Date();
+  document.getElementById('hdrClock').textContent = n.toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}) + ' · ' + n.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:true});
+}
+tick(); setInterval(tick, 1000);
 
-// Backdrop close
-['newMO','upMO','bulkMO','umMO','viewMO'].forEach(id=>document.getElementById(id).addEventListener('click',function(e){if(e.target===this)closeMo(id);}));
+// Backdrop close — registered once
+['newMO','upMO','bulkMO','umMO','viewMO'].forEach(id => {
+  document.getElementById(id).addEventListener('click', function(e) { if (e.target === this) closeMo(id); });
+});
 
-// Session restore
-try{
-  const s=JSON.parse(sessionStorage.getItem('esc_session'));
-  if(s&&s.id){
-    currentUser=s;
-    document.getElementById('loginScreen').style.display='none';
-    document.getElementById('appWrap').style.display='block';
-    document.getElementById('uName').textContent=s.name;
-    document.getElementById('uAvatar').textContent=s.name.charAt(0).toUpperCase();
-    if(s.role==='admin') document.getElementById('mgrBtn').style.display='';
-    if(s.role==='urbanic'){ document.getElementById('exportWrap').style.display='none'; document.getElementById('mgrBtn').style.display='none'; }
-    else { document.getElementById('exportWrap').style.display=''; }
-    populateActFilter();
-    loadEscalations();
-    loadActivity();
-  }
-}catch(e){}
+// Export menu close on outside click
+document.addEventListener('click', function(e) {
+  if (!document.getElementById('exportWrap')?.contains(e.target)) closeExportMenu();
+});
 
 // ═══════════════ USER MANAGER ═══════════════
-function openModal(id){ document.getElementById(id).classList.add('open'); if(id==='umMO') renderUserList(); }
-function createUser(){
-  const name=document.getElementById('umName').value.trim();
-  const username=document.getElementById('umUser').value.trim();
-  const password=document.getElementById('umPass').value.trim();
-  const role=document.getElementById('umRole').value;
-  if(!name||!username||!password){toast('t-err','⚠️ Missing Fields','Fill all user fields.');return;}
-  
-  const newUser={id:'u'+Date.now(),name,username,password,role};
-  fetch('/api/users',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(newUser)})
-    .then(res=>res.json())
-    .then(data=>{
-      if(data.status==='success'){
-        ['umName','umUser','umPass'].forEach(id=>document.getElementById(id).value='');
+function openModal(id) { document.getElementById(id).classList.add('open'); if (id === 'umMO') renderUserList(); }
+
+function createUser() {
+  const name = document.getElementById('umName').value.trim();
+  const username = document.getElementById('umUser').value.trim();
+  const password = document.getElementById('umPass').value.trim();
+  const role = document.getElementById('umRole').value;
+  if (!name || !username || !password) { toast('t-err','⚠️ Missing Fields','Fill all user fields.'); return; }
+  fetch('/api/users', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({id:'u'+Date.now(),name,username,password,role})})
+    .then(res => res.json())
+    .then(resp => {
+      if (resp.status === 'success') {
+        ['umName','umUser','umPass'].forEach(id => document.getElementById(id).value = '');
         renderUserList(); populateActFilter();
-        toast('t-ok','✅ User Created',`${name} (${username}) added!`);
+        toast('t-ok','✅ User Created',`${name} (@${username}) added!`);
       } else {
-        toast('t-err','❌ Error',data.message||'Failed to create user');
+        toast('t-err','❌ Error', resp.message || 'Failed to create user');
       }
     })
-    .catch(err=>{console.error('Error:',err);toast('t-err','❌ Error','Failed to create user.');});
+    .catch(() => toast('t-err','❌ Error','Failed to create user.'));
 }
-function renderUserList(){
+
+function renderUserList() {
   fetch('/api/users')
-    .then(res=>res.json())
-    .then(users=>{
-      const list=document.getElementById('umUserList');
-      list.innerHTML=users.map(u=>`<div class="um-user-row"><div class="um-avatar">${u.name.charAt(0).toUpperCase()}</div><div class="um-info"><div class="um-name">${u.name} ${u.role==='admin'?'<span class="admin-badge">Admin</span>':''}</div><div class="um-uname">@${u.username}</div></div>${u.id!=='u1'?`<button class="um-del-btn" onclick="deleteUser('${u.id}')">Remove</button>`:''}</div>`).join('');
+    .then(res => res.json())
+    .then(users => {
+      document.getElementById('umUserList').innerHTML = users.map(u =>
+        `<div class="um-user-row">
+          <div class="um-avatar">${u.name.charAt(0).toUpperCase()}</div>
+          <div class="um-info">
+            <div class="um-name">${u.name} ${u.role==='admin'?'<span class="admin-badge">Admin</span>':''}</div>
+            <div class="um-uname">@${u.username}</div>
+          </div>
+          ${u.id !== 'u1' ? `<button class="um-del-btn" onclick="deleteUser('${u.id}')">Remove</button>` : ''}
+        </div>`
+      ).join('');
     })
-    .catch(err=>console.error('Error loading users:',err));
+    .catch(err => console.error('Error loading users:', err));
 }
-function deleteUser(id){
-  if(!confirm('Remove this user?')) return;
-  fetch(`/api/users/${id}`,{method:'DELETE',headers:{'Content-Type':'application/json'}})
-    .then(res=>res.json())
-    .then(()=>{renderUserList();populateActFilter();toast('t-ok','✅ Removed','User removed.');})
-    .catch(err=>{console.error('Error:',err);toast('t-err','❌ Error','Failed to remove user.');});
+
+function deleteUser(id) {
+  if (!confirm('Remove this user?')) return;
+  fetch(`/api/users/${id}`, {method:'DELETE', headers:{'Content-Type':'application/json'}})
+    .then(() => { renderUserList(); populateActFilter(); toast('t-ok','✅ Removed','User removed.'); })
+    .catch(() => toast('t-err','❌ Error','Failed to remove user.'));
 }
-function populateActFilter(){
-  if(!document.getElementById('actFilter')) return; // Element might not exist yet
+
+function populateActFilter() {
   fetch('/api/users')
-    .then(res=>res.json())
-    .then(users=>{
-      const sel=document.getElementById('actFilter');
-      if(sel) sel.innerHTML='<option value="all">All Users</option>'+users.map(u=>`<option value="${u.username}">${u.name} (@${u.username})</option>`).join('');
+    .then(res => res.json())
+    .then(users => {
+      const sel = document.getElementById('actFilter');
+      if (sel) sel.innerHTML = '<option value="all">All Users</option>' + users.map(u => `<option value="${u.username}">${u.name} (@${u.username})</option>`).join('');
     })
-    .catch(err=>{console.error('Error fetching users:',err);const sel=document.getElementById('actFilter');if(sel)sel.innerHTML='<option value="all">All Users</option>';});
+    .catch(() => {});
 }
 
 // ═══════════════ ACTIVITY ═══════════════
-function logAct(type,title,msg){
-  const entry={type,title,msg,user:currentUser?.name||'System',username:currentUser?.username||'system',ts:Date.now()};
-  fetch('/api/activity',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(entry)})
-    .then(()=>{ activity.unshift(entry); if(activity.length>500) activity=activity.slice(0,500); renderActivity(); })
-    .catch(err=>console.error('Error logging activity:',err));
+function logAct(type, title, msg) {
+  const entry = {type, title, msg, user:currentUser?.name||'System', username:currentUser?.username||'system', ts:Date.now()};
+  fetch('/api/activity', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(entry)})
+    .then(() => { activity.unshift(entry); if (activity.length > 500) activity = activity.slice(0, 500); renderActivity(); })
+    .catch(err => console.error('Error logging activity:', err));
 }
-function renderActivity(){
-  const filter=document.getElementById('actFilter')?.value||'all';
-  const panel=document.getElementById('np');
-  const items=filter==='all'?activity:activity.filter(a=>a.username===filter);
-  if(!items.length){ panel.innerHTML='<div style="text-align:center;padding:24px 16px;color:var(--mt);font-size:11px;font-family:\'DM Mono\',monospace">No activity yet</div>'; return; }
-  panel.innerHTML=items.map(a=>{
-    const ts=new Date(a.ts).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',hour12:true});
-    const dt=new Date(a.ts).toLocaleDateString('en-IN',{day:'2-digit',month:'short'});
-    return `<div class="notif ${a.type}"><div class="notif-top"><span class="nt">${a.type==='n-new'?'🚨 NEW':a.type==='n-close'?'✅ CLOSED':a.type==='n-update'?'✏️ UPDATE':'📤 BULK'}</span><span class="ntime">${dt} ${ts}</span></div><div class="nm">${a.title}</div><div class="nawb">${a.msg}</div><div class="n-user-tag">👤 ${a.user}</div></div>`;
+
+function renderActivity() {
+  const filter = document.getElementById('actFilter')?.value || 'all';
+  const panel = document.getElementById('np');
+  const items = filter === 'all' ? activity : activity.filter(a => a.username === filter);
+  if (!items.length) { panel.innerHTML = '<div style="text-align:center;padding:24px 16px;color:var(--mt);font-size:11px;font-family:\'DM Mono\',monospace">No activity yet</div>'; return; }
+  panel.innerHTML = items.map(a => {
+    const ts = new Date(a.ts).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',hour12:true});
+    const dt = new Date(a.ts).toLocaleDateString('en-IN',{day:'2-digit',month:'short'});
+    const label = a.type==='n-new'?'🚨 NEW':a.type==='n-close'?'✅ CLOSED':a.type==='n-update'?'✏️ UPDATE':'📤 BULK';
+    return `<div class="notif ${a.type}"><div class="notif-top"><span class="nt">${label}</span><span class="ntime">${dt} ${ts}</span></div><div class="nm">${a.title}</div><div class="nawb">${a.msg}</div><div class="n-user-tag">👤 ${a.user}</div></div>`;
   }).join('');
 }
 
 // ═══════════════ TYPE / STATUS SELECT ═══════════════
-function selType(mode,t){
-  if(mode==='new') newType=t; else upType=t;
-  const pre=mode==='new'?'nT':'uT';
-  document.getElementById(pre+'_fake').className='type-opt'+(t==='Fake Attempt'?' sel-fake':'');
-  document.getElementById(pre+'_delay').className='type-opt'+(t==='Delay'?' sel-delay':'');
-  document.getElementById(pre+'_reattempt').className='type-opt'+(t==='Reattempt'?' sel-reattempt':'');
-  document.getElementById(pre+'_other').className='type-opt'+(t==='Other'?' sel-other':'');
+function selType(mode, t) {
+  if (mode === 'new') newType = t; else upType = t;
+  const pre = mode === 'new' ? 'nT' : 'uT';
+  document.getElementById(pre+'_fake').className = 'type-opt' + (t==='Fake Attempt'?' sel-fake':'');
+  document.getElementById(pre+'_delay').className = 'type-opt' + (t==='Delay'?' sel-delay':'');
+  document.getElementById(pre+'_reattempt').className = 'type-opt' + (t==='Reattempt'?' sel-reattempt':'');
+  document.getElementById(pre+'_other').className = 'type-opt' + (t==='Other'?' sel-other':'');
 }
-function selStatus(s){
-  mStatus=s;
-  document.getElementById('so_open').className='so'+(s==='open'?' s-open':'');
-  document.getElementById('so_close').className='so'+(s==='close'?' s-close':'');
+
+function selStatus(s) {
+  mStatus = s;
+  document.getElementById('so_open').className = 'so' + (s==='open'?' s-open':'');
+  document.getElementById('so_close').className = 'so' + (s==='close'?' s-close':'');
 }
 
 // ═══════════════ VALIDATE ═══════════════
-function validateNew(){
-  const client=document.getElementById('nClient').value.trim();
-  const awb=document.getElementById('nAwb').value.trim();
-  const remarks=document.getElementById('nRemarks').value.trim();
-  // AWB duplicate check
-  const awbErrEl=document.getElementById('nAwbErr');
-  const awbField=document.getElementById('nAwb');
-  const dupAwb=awb&&data.some(e=>e.awb&&e.awb.trim().toLowerCase()===awb.toLowerCase());
-  if(dupAwb){
-    awbErrEl.style.display='block';
-    awbField.classList.add('err');
-  } else {
-    awbErrEl.style.display='none';
-    awbField.classList.remove('err');
-  }
-  const ok=client&&awb&&remarks&&!dupAwb;
-  document.getElementById('nSubmitBtn').disabled=!ok;
+function validateNew() {
+  const client = document.getElementById('nClient').value.trim();
+  const awb = document.getElementById('nAwb').value.trim();
+  const remarks = document.getElementById('nRemarks').value.trim();
+  const awbErrEl = document.getElementById('nAwbErr');
+  const awbField = document.getElementById('nAwb');
+  const dupAwb = awb && data.some(e => e.awb && e.awb.trim().toLowerCase() === awb.toLowerCase());
+  if (dupAwb) { awbErrEl.style.display = 'block'; awbField.classList.add('err'); }
+  else { awbErrEl.style.display = 'none'; awbField.classList.remove('err'); }
+  document.getElementById('nSubmitBtn').disabled = !(client && awb && remarks && !dupAwb);
 }
-function validateUpdate(){
-  document.getElementById('uSubmitBtn').disabled=!document.getElementById('uRemarks').value.trim();
+
+function validateUpdate() {
+  document.getElementById('uSubmitBtn').disabled = !document.getElementById('uRemarks').value.trim();
 }
 
 // ═══════════════ NEW ESCALATION ═══════════════
-function openNewModal(){
-  const now=new Date();
-  document.getElementById('nDate').value=now.toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'});
-  document.getElementById('nTime').value=now.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',hour12:true});
-  document.getElementById('nLoggedBy').value=currentUser?currentUser.name+' (@'+currentUser.username+')':'Unknown';
-  ['nClient','nOrder','nAwb','nRemarks'].forEach(id=>{const el=document.getElementById(id);el.value='';el.classList.remove('err');});
-  document.getElementById('nAwbErr').style.display='none';
-  document.getElementById('nPayment').value='Prepaid';
-  newType='Fake Attempt';
-  document.getElementById('nT_fake').className='type-opt sel-fake';
-  document.getElementById('nT_delay').className='type-opt';
-  document.getElementById('nT_reattempt').className='type-opt';
-  document.getElementById('nT_other').className='type-opt';
-  document.getElementById('nSubmitBtn').disabled=true;
+function openNewModal() {
+  const now = new Date();
+  document.getElementById('nDate').value = now.toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'});
+  document.getElementById('nTime').value = now.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',hour12:true});
+  document.getElementById('nLoggedBy').value = currentUser ? currentUser.name + ' (@' + currentUser.username + ')' : 'Unknown';
+  ['nClient','nOrder','nAwb','nRemarks'].forEach(id => { const el = document.getElementById(id); el.value = ''; el.classList.remove('err'); });
+  document.getElementById('nAwbErr').style.display = 'none';
+  document.getElementById('nPayment').value = 'Prepaid';
+  newType = 'Fake Attempt';
+  selType('new', 'Fake Attempt');
+  document.getElementById('nSubmitBtn').disabled = true;
   openMo('newMO');
 }
-function submitNew(){
-  const client=document.getElementById('nClient').value.trim();
-  const awb=document.getElementById('nAwb').value.trim();
-  const remarks=document.getElementById('nRemarks').value.trim();
-  if(!client||!awb||!remarks){toast('t-err','⚠️ Missing Fields','Client, AWB and Remarks are required.');return;}
-  const dupAwb=data.some(e=>e.awb&&e.awb.trim().toLowerCase()===awb.toLowerCase());
-  if(dupAwb){toast('t-err','🚫 Duplicate Entry','This AWB has already been escalated. Please avoid re-submission.');return;}
-  const ts=Date.now();
-  const order=document.getElementById('nOrder').value.trim();
-  const e={id:genId(),ts,date:fmtDate(ts),time:fmtTime(ts),client,courier:'',order:order||'—',awb,payment:document.getElementById('nPayment').value,type:newType,remarks,status:'open',addedBy:currentUser?.name||'Unknown',addedByUser:currentUser?.username||''};
-  
-  fetch('/api/escalations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(e)})
-    .then(res=>res.json())
-    .then(()=>{ closeMo('newMO'); logAct('n-new',`🚨 ${client}`,`${newType} · AWB: ${awb}`); nCount++; document.getElementById('nc').textContent=nCount; toast('t-err','🚨 Escalation Logged',`${client} — ${newType}`); })
-    .catch(err=>{ console.error('Error submitting:',err); toast('t-err','❌ Error','Failed to log escalation.'); });
+
+function submitNew() {
+  const client = document.getElementById('nClient').value.trim();
+  const awb = document.getElementById('nAwb').value.trim();
+  const remarks = document.getElementById('nRemarks').value.trim();
+  if (!client || !awb || !remarks) { toast('t-err','⚠️ Missing Fields','Client, AWB and Remarks are required.'); return; }
+  const dupAwb = data.some(e => e.awb && e.awb.trim().toLowerCase() === awb.toLowerCase());
+  if (dupAwb) { toast('t-err','🚫 Duplicate Entry','This AWB has already been escalated.'); return; }
+  const ts = Date.now();
+  const order = document.getElementById('nOrder').value.trim();
+  const e = {
+    id: genId(), ts, date: fmtDate(ts), time: fmtTime(ts),
+    client, courier: '', order: order || '—', awb,
+    payment: document.getElementById('nPayment').value,
+    type: newType, remarks, status: 'open',
+    addedBy: currentUser?.name || 'Unknown',
+    addedByUser: currentUser?.username || ''
+  };
+  fetch('/api/escalations', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(e)})
+    .then(res => res.json())
+    .then(() => {
+      // FIX: was using 't-err' (red) on success — corrected to 't-ok' (green)
+      closeMo('newMO');
+      logAct('n-new', `🚨 ${client}`, `${newType} · AWB: ${awb}`);
+      nCount++;
+      document.getElementById('nc').textContent = nCount;
+      toast('t-ok','🚨 Escalation Logged',`${client} — ${newType}`);
+    })
+    .catch(() => toast('t-err','❌ Error','Failed to log escalation.'));
 }
 
 // ═══════════════ VIEW MODAL ═══════════════
-function openViewModal(id){
-  const e=data.find(x=>x.id===id); if(!e) return;
-  const tat=getTAT(e);
-  document.getElementById('viewBody').innerHTML=`
+function openViewModal(id) {
+  const e = data.find(x => x.id === id); if (!e) return;
+  const tat = getTAT(e);
+  document.getElementById('viewBody').innerHTML = `
     <div class="tat-info-bar">
       <div><div class="ti-lbl">TAT Status (${TAT_HOURS}h SLA)</div><div class="ti-val"><span class="tat-badge ${tat.cls}">${tat.label}</span></div></div>
       <div style="text-align:right"><div class="ti-lbl">Escalation ID</div><div class="ti-val" style="color:var(--ac);font-family:'DM Mono',monospace;font-size:13px">${e.id}</div></div>
@@ -929,145 +949,221 @@ function openViewModal(id){
 }
 
 // ═══════════════ UPDATE MODAL ═══════════════
-function openUpdateModal(id){
-  const e=data.find(x=>x.id===id); if(!e) return;
-  selId=id; mStatus=e.status;
-  document.getElementById('moInfo').innerHTML=`
+function openUpdateModal(id) {
+  const e = data.find(x => x.id === id); if (!e) return;
+  selId = id; mStatus = e.status;
+  document.getElementById('moInfo').innerHTML = `
     <div class="di-item"><div class="di-lbl">Escalation ID</div><div class="di-val" style="color:var(--ac)">${e.id}</div></div>
     <div class="di-item"><div class="di-lbl">Logged At</div><div class="di-val">${e.date}${e.time?' · '+e.time:''}</div></div>
     <div class="di-item"><div class="di-lbl">Order No.</div><div class="di-val">${e.order}</div></div>
     <div class="di-item"><div class="di-lbl">Added By</div><div class="di-val" style="color:var(--pp)">${e.addedBy||'—'}</div></div>
   `;
-  document.getElementById('uClient').value=e.client||'';
-  document.getElementById('uCourier').value=e.courier||'';
-  document.getElementById('uOrder').value=e.order||'';
-  document.getElementById('uAwb').value=e.awb||'';
-  document.getElementById('uPayment').value=e.payment||'Prepaid';
-  document.getElementById('uRemarks').value=e.remarks||'';
+  document.getElementById('uClient').value = e.client || '';
+  document.getElementById('uCourier').value = e.courier || '';
+  document.getElementById('uOrder').value = e.order || '';
+  document.getElementById('uAwb').value = e.awb || '';
+  document.getElementById('uPayment').value = e.payment || 'Prepaid';
+  document.getElementById('uRemarks').value = e.remarks || '';
   document.getElementById('uRemarks').classList.remove('err');
-  selType('up',e.type||'Fake Attempt');
-  selStatus(e.status||'open');
-  document.getElementById('uSubmitBtn').disabled=!(e.remarks||'').trim();
+  selType('up', e.type || 'Fake Attempt');
+  selStatus(e.status || 'open');
+  document.getElementById('uSubmitBtn').disabled = !(e.remarks || '').trim();
   openMo('upMO');
 }
-function saveUpdate(){
-  const remarks=document.getElementById('uRemarks').value.trim();
-  if(!remarks){document.getElementById('uRemarks').classList.add('err');toast('t-err','⚠️ Remarks Required','Action/Remarks cannot be empty.');return;}
-  const e=data.find(x=>x.id===selId); if(!e) return;
-  const wasOpen=e.status==='open';
-  const updateData={
-    client:document.getElementById('uClient').value.trim()||e.client,
-    courier:document.getElementById('uCourier').value.trim(),
-    order:document.getElementById('uOrder').value.trim()||e.order,
-    awb:document.getElementById('uAwb').value.trim(),
-    payment:document.getElementById('uPayment').value,
-    type:upType,
-    remarks,
-    status:mStatus,
-    updatedAt:Date.now(),
-    updatedBy:currentUser?.name||'Unknown'
+
+function saveUpdate() {
+  const remarks = document.getElementById('uRemarks').value.trim();
+  if (!remarks) { document.getElementById('uRemarks').classList.add('err'); toast('t-err','⚠️ Remarks Required','Action/Remarks cannot be empty.'); return; }
+  const e = data.find(x => x.id === selId); if (!e) return;
+  const wasOpen = e.status === 'open';
+  const updateData = {
+    client: document.getElementById('uClient').value.trim() || e.client,
+    courier: document.getElementById('uCourier').value.trim(),
+    order: document.getElementById('uOrder').value.trim() || e.order,
+    awb: document.getElementById('uAwb').value.trim(),
+    payment: document.getElementById('uPayment').value,
+    type: upType, remarks, status: mStatus,
+    updatedAt: Date.now(), updatedBy: currentUser?.name || 'Unknown'
   };
-  
-  fetch(`/api/escalations/${selId}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(updateData)})
-    .then(res=>res.json())
-    .then(()=>{ closeMo('upMO'); const actType=wasOpen&&mStatus==='close'?'n-close':'n-update'; logAct(actType,wasOpen&&mStatus==='close'?`✅ Closed: ${e.client}`:`✏️ Updated: ${e.client}`,`${upType} · ${updateData.order}`); nCount++; document.getElementById('nc').textContent=nCount; if(wasOpen&&mStatus==='close') toast('t-ok','✅ Escalation Closed',`${e.client} — ${updateData.order}`); else toast('t-ok','💾 Updated',`${e.client} — ${updateData.order}`); })
-    .catch(err=>{ console.error('Error updating:',err); toast('t-err','❌ Error','Failed to update escalation.'); });
+  fetch(`/api/escalations/${selId}`, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(updateData)})
+    .then(res => res.json())
+    .then(() => {
+      closeMo('upMO');
+      const actType = wasOpen && mStatus === 'close' ? 'n-close' : 'n-update';
+      const actTitle = wasOpen && mStatus === 'close' ? `✅ Closed: ${e.client}` : `✏️ Updated: ${e.client}`;
+      logAct(actType, actTitle, `${upType} · ${updateData.order}`);
+      nCount++; document.getElementById('nc').textContent = nCount;
+      if (wasOpen && mStatus === 'close') toast('t-ok','✅ Escalation Closed',`${e.client} — ${updateData.order}`);
+      else toast('t-ok','💾 Updated',`${e.client} — ${updateData.order}`);
+    })
+    .catch(() => toast('t-err','❌ Error','Failed to update escalation.'));
 }
 
-function delEntry(id,ev){
+function delEntry(id, ev) {
   ev.stopPropagation();
-  if(!confirm('Delete this escalation? This cannot be undone.')) return;
-  fetch(`/api/escalations/${id}`,{method:'DELETE',headers:{'Content-Type':'application/json'}})
-    .then(res=>res.json())
-    .then(()=>{ data=data.filter(x=>x.id!==id); render(); updateStats(); updateTabs(); toast('t-info','🗑️ Deleted','Escalation removed.'); })
-    .catch(err=>{ console.error('Error deleting:',err); toast('t-err','❌ Error','Failed to delete escalation.'); });
+  if (!confirm('Delete this escalation? This cannot be undone.')) return;
+  fetch(`/api/escalations/${id}`, {method:'DELETE', headers:{'Content-Type':'application/json'}})
+    .then(res => res.json())
+    // FIX: removed redundant data.filter here — socket 'escalation_deleted' event handles UI update
+    .then(() => toast('t-info','🗑️ Deleted','Escalation removed.'))
+    .catch(() => toast('t-err','❌ Error','Failed to delete escalation.'));
 }
 
 // ═══════════════ BULK ═══════════════
-function openBulkModal(tab){ document.getElementById('excelMapSec').style.display='none'; document.getElementById('previewWrap').style.display='none'; document.getElementById('fileInp').value=''; openMo('bulkMO'); }
+function openBulkModal() {
+  document.getElementById('excelMapSec').style.display = 'none';
+  document.getElementById('previewWrap').style.display = 'none';
+  document.getElementById('fileInp').value = '';
+  openMo('bulkMO');
+}
 
-function openDriveLink(){
-  const url=document.getElementById('driveUrlInp').value.trim();
-  if(!url){toast('t-err','⚠️ No Link','Please paste a Google Drive shareable link.');return;}
-  // Try to extract file ID from standard Drive share URLs
-  const match=url.match(/\/d\/([a-zA-Z0-9_-]{25,})/)||url.match(/id=([a-zA-Z0-9_-]{25,})/);
-  if(!match){toast('t-err','❌ Invalid Link','Could not parse a valid Google Drive file ID from the link. Make sure the file is shared publicly.');return;}
-  const fileId=match[1];
-  const exportUrl=`https://docs.google.com/spreadsheets/d/${fileId}/export?format=xlsx`;
+function openDriveLink() {
+  const url = document.getElementById('driveUrlInp').value.trim();
+  if (!url) { toast('t-err','⚠️ No Link','Please paste a Google Drive shareable link.'); return; }
+  const match = url.match(/\/d\/([a-zA-Z0-9_-]{25,})/) || url.match(/id=([a-zA-Z0-9_-]{25,})/);
+  if (!match) { toast('t-err','❌ Invalid Link','Could not parse a valid Google Drive file ID.'); return; }
+  const fileId = match[1];
+  const exportUrl = `https://docs.google.com/spreadsheets/d/${fileId}/export?format=xlsx`;
   toast('t-info','🔗 Loading…','Attempting to fetch file from Google Drive…');
-  fetch(exportUrl).then(r=>{if(!r.ok)throw new Error('Fetch failed');return r.arrayBuffer();}).then(buf=>{
-    const wb=XLSX.read(buf,{type:'array'});
-    const ws=wb.Sheets[wb.SheetNames[0]];
-    const json=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
-    if(json.length<2){toast('t-err','❌ Empty File','No data rows found in Drive file.');return;}
-    excelHdrs=json[0].map(h=>String(h).trim()); excelRows=json.slice(1).filter(r=>r.some(c=>String(c).trim()));
-    buildMapUI('excelMapGrid','excel',excelHdrs); buildPreview(excelHdrs,excelRows.slice(0,5));
-    document.getElementById('excelInfo').textContent=`✅ Loaded ${excelRows.length} rows from Google Drive file.`;
-    document.getElementById('excelMapSec').style.display='flex'; document.getElementById('previewWrap').style.display='block';
+  fetch(exportUrl).then(r => { if (!r.ok) throw new Error('Fetch failed'); return r.arrayBuffer(); }).then(buf => {
+    const wb = XLSX.read(buf, {type:'array'});
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const json = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+    if (json.length < 2) { toast('t-err','❌ Empty File','No data rows found in Drive file.'); return; }
+    excelHdrs = json[0].map(h => String(h).trim());
+    excelRows = json.slice(1).filter(r => r.some(c => String(c).trim()));
+    buildMapUI('excelMapGrid', 'excel', excelHdrs);
+    buildPreview(excelHdrs, excelRows.slice(0, 5));
+    document.getElementById('excelInfo').textContent = `✅ Loaded ${excelRows.length} rows from Google Drive file.`;
+    document.getElementById('excelMapSec').style.display = 'flex';
+    document.getElementById('previewWrap').style.display = 'block';
     toast('t-ok','✅ Drive File Loaded',`${excelRows.length} rows ready to import.`);
-  }).catch(()=>{toast('t-err','❌ Access Denied','Could not fetch the file. Make sure the link is set to "Anyone with the link can view".');});
-}
-function connectGoogleDrive(){
-  toast('t-info','🟢 Google Drive','Direct Google Drive integration requires OAuth setup. Please use a shareable link above, or contact your admin to enable full Drive integration.');
+  }).catch(() => toast('t-err','❌ Access Denied','Make sure the link is set to "Anyone with the link can view".'));
 }
 
-function onDragLeave(){document.getElementById('dropZone').classList.remove('drag');}
-function onDrop(e){e.preventDefault();onDragLeave();if(e.dataTransfer.files[0])handleFile(e.dataTransfer.files[0]);}
-function handleFile(file){
-  if(!file) return;
-  const ext=file.name.split('.').pop().toLowerCase();
-  if(!['xlsx','xls','csv'].includes(ext)){toast('t-err','❌ Invalid File','Use .xlsx, .xls or .csv');return;}
-  const reader=new FileReader();
-  reader.onload=ev=>{
-    const wb=XLSX.read(ev.target.result,{type:'array'});
-    const ws=wb.Sheets[wb.SheetNames[0]];
-    const json=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
-    if(json.length<2){toast('t-err','❌ Empty File','No data rows found.');return;}
-    excelHdrs=json[0].map(h=>String(h).trim()); excelRows=json.slice(1).filter(r=>r.some(c=>String(c).trim()));
-    buildMapUI('excelMapGrid','excel',excelHdrs); buildPreview(excelHdrs,excelRows.slice(0,5));
-    document.getElementById('excelInfo').textContent=`✅ Loaded ${excelRows.length} rows from "${file.name}".`;
-    document.getElementById('excelMapSec').style.display='flex'; document.getElementById('previewWrap').style.display='block';
+function connectGoogleDrive() {
+  toast('t-info','🟢 Google Drive','Direct Google Drive integration requires OAuth setup. Please use a shareable link above.');
+}
+
+function onDragOver(e) { e.preventDefault(); document.getElementById('dropZone').classList.add('drag'); }
+function onDragLeave() { document.getElementById('dropZone').classList.remove('drag'); }
+function onDrop(e) { e.preventDefault(); onDragLeave(); if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); }
+
+function handleFile(file) {
+  if (!file) return;
+  const ext = file.name.split('.').pop().toLowerCase();
+  if (!['xlsx','xls','csv'].includes(ext)) { toast('t-err','❌ Invalid File','Use .xlsx, .xls or .csv'); return; }
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const wb = XLSX.read(ev.target.result, {type:'array'});
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const json = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+    if (json.length < 2) { toast('t-err','❌ Empty File','No data rows found.'); return; }
+    excelHdrs = json[0].map(h => String(h).trim());
+    excelRows = json.slice(1).filter(r => r.some(c => String(c).trim()));
+    buildMapUI('excelMapGrid', 'excel', excelHdrs);
+    buildPreview(excelHdrs, excelRows.slice(0, 5));
+    document.getElementById('excelInfo').textContent = `✅ Loaded ${excelRows.length} rows from "${file.name}".`;
+    document.getElementById('excelMapSec').style.display = 'flex';
+    document.getElementById('previewWrap').style.display = 'block';
   };
   reader.readAsArrayBuffer(file);
 }
-function buildMapUI(gridId,prefix,headers){
-  const grid=document.getElementById(gridId); grid.innerHTML='';
-  const opts='<option value="">— skip —</option>'+headers.map((h,i)=>`<option value="${i}">${h}</option>`).join('');
-  FIELDS.forEach(f=>{ const autoIdx=headers.findIndex(h=>AUTO_MAP[f]?.includes(h.toLowerCase().trim())); const row=document.createElement('div'); row.className='col-map-row'; row.innerHTML=`<div class="col-field">${FLABELS[f]}</div><div style="text-align:center;color:var(--mt);font-size:12px">→</div><select class="col-sel" id="${prefix}_${f}">${opts}</select>`; grid.appendChild(row); if(autoIdx>=0) document.getElementById(`${prefix}_${f}`).value=autoIdx; });
+
+function buildMapUI(gridId, prefix, headers) {
+  const grid = document.getElementById(gridId); grid.innerHTML = '';
+  const opts = '<option value="">— skip —</option>' + headers.map((h,i) => `<option value="${i}">${h}</option>`).join('');
+  FIELDS.forEach(f => {
+    const autoIdx = headers.findIndex(h => AUTO_MAP[f]?.includes(h.toLowerCase().trim()));
+    const row = document.createElement('div');
+    row.className = 'col-map-row';
+    row.innerHTML = `<div class="col-field">${FLABELS[f]}</div><div style="text-align:center;color:var(--mt);font-size:12px">→</div><select class="col-sel" id="${prefix}_${f}">${opts}</select>`;
+    grid.appendChild(row);
+    if (autoIdx >= 0) document.getElementById(`${prefix}_${f}`).value = autoIdx;
+  });
 }
-function buildPreview(headers,rows){ const t=document.getElementById('previewTbl'); t.innerHTML=`<thead><tr>${headers.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join('')}</tr>`).join('')}</tbody>`; }
-function confirmImport(){ const maps={}; FIELDS.forEach(f=>{const v=document.getElementById(`excel_${f}`)?.value; maps[f]=v!==''&&v!==undefined?parseInt(v):-1;}); doImport(excelRows,maps); closeMo('bulkMO'); }
-function doImport(rows,maps){ let count=0; const ts=Date.now(); const escalations=[]; rows.forEach((r,i)=>{ const get=f=>maps[f]>=0?String(r[maps[f]]??'').trim():''; const client=get('client'); const order=get('order'); if(!client&&!order) return; const rawType=get('type').toLowerCase(); const type=rawType.includes('delay')?'Delay':rawType.includes('fake')?'Fake Attempt':rawType.includes('reattempt')?'Reattempt':'Other'; const ets=ts+i; escalations.push({id:genId(),ts:ets,date:fmtDate(ets),time:fmtTime(ets),client:client||'Unknown',courier:get('courier'),order:order||`ROW-${i+1}`,awb:get('awb'),payment:get('payment')||'Prepaid',type,remarks:get('remarks')||'Imported via Bulk Upload',status:'open',addedBy:currentUser?.name||'Bulk Import',addedByUser:currentUser?.username||''}); count++; }); if(count>0){ Promise.all(escalations.map(e=>fetch('/api/escalations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(e)}))).then(()=>{ logAct('n-bulk',`📤 Bulk Import`,`${count} escalations imported`); nCount++; document.getElementById('nc').textContent=nCount; toast('t-bulk','📤 Import Complete',`${count} escalations added!`); }).catch(err=>{ console.error('Error importing:',err); toast('t-err','❌ Error','Some escalations failed to import.'); }); } return count; }
+
+function buildPreview(headers, rows) {
+  const t = document.getElementById('previewTbl');
+  t.innerHTML = `<thead><tr>${headers.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join('')}</tr>`).join('')}</tbody>`;
+}
+
+function confirmImport() {
+  const maps = {};
+  FIELDS.forEach(f => { const v = document.getElementById(`excel_${f}`)?.value; maps[f] = (v !== '' && v !== undefined) ? parseInt(v) : -1; });
+  doImport(excelRows, maps);
+  closeMo('bulkMO');
+}
+
+function doImport(rows, maps) {
+  let count = 0;
+  const ts = Date.now();
+  const escalations = [];
+  rows.forEach((r, i) => {
+    const get = f => maps[f] >= 0 ? String(r[maps[f]] ?? '').trim() : '';
+    const client = get('client'); const order = get('order');
+    if (!client && !order) return;
+    const rawType = get('type').toLowerCase();
+    const type = rawType.includes('delay') ? 'Delay' : rawType.includes('fake') ? 'Fake Attempt' : rawType.includes('reattempt') ? 'Reattempt' : 'Other';
+    const ets = ts + i;
+    escalations.push({id:genId(),ts:ets,date:fmtDate(ets),time:fmtTime(ets),client:client||'Unknown',courier:get('courier'),order:order||`ROW-${i+1}`,awb:get('awb'),payment:get('payment')||'Prepaid',type,remarks:get('remarks')||'Imported via Bulk Upload',status:'open',addedBy:currentUser?.name||'Bulk Import',addedByUser:currentUser?.username||''});
+    count++;
+  });
+  if (count > 0) {
+    Promise.all(escalations.map(e => fetch('/api/escalations', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(e)})))
+      .then(() => { logAct('n-bulk','📤 Bulk Import',`${count} escalations imported`); nCount++; document.getElementById('nc').textContent = nCount; toast('t-bulk','📤 Import Complete',`${count} escalations added!`); })
+      .catch(() => toast('t-err','❌ Error','Some escalations failed to import.'));
+  }
+  return count;
+}
 
 // ═══════════════ RENDER ═══════════════
-function setTab(tab,el){ activeTab=tab; document.querySelectorAll('.ship-tab').forEach(t=>t.classList.remove('active')); el.classList.add('active'); const titles={all:'📋 All Escalations',fake:'🚫 Fake Attempt',delay:'⏰ Delay in Delivery',reattempt:'🔄 Reattempt',other:'📌 Other',tab_open:'🔴 Open Escalations',tab_close:'✅ Closed Escalations'}; document.getElementById('tableTitle').textContent=titles[tab]||'Escalations'; render(); }
-function filterStat(f,el){ statFilter=f; activeTab='all'; document.querySelectorAll('.stat').forEach(s=>s.classList.remove('active')); el.classList.add('active'); document.querySelectorAll('.ship-tab').forEach((t,i)=>{if(i===0)t.classList.add('active');else t.classList.remove('active');}); document.getElementById('tableTitle').textContent={all:'📋 All Escalations',open:'🔴 Open Escalations',close:'✅ Closed Escalations'}[f]||'📋 All Escalations'; render(); }
-function getFiltered(){
-  let d=[...data];
-  const q=document.getElementById('srchInp').value.toLowerCase();
-  if(q) d=d.filter(e=>[e.client,e.order,e.awb,e.courier,e.type,e.remarks,e.id].join(' ').toLowerCase().includes(q));
-  if(activeTab==='fake') d=d.filter(e=>e.type==='Fake Attempt');
-  else if(activeTab==='delay') d=d.filter(e=>e.type==='Delay');
-  else if(activeTab==='reattempt') d=d.filter(e=>e.type==='Reattempt');
-  else if(activeTab==='other') d=d.filter(e=>e.type!=='Fake Attempt'&&e.type!=='Delay'&&e.type!=='Reattempt');
-  else if(activeTab==='tab_open') d=d.filter(e=>e.status==='open');
-  else if(activeTab==='tab_close') d=d.filter(e=>e.status==='close');
-  if(statFilter==='open') d=d.filter(e=>e.status==='open');
-  else if(statFilter==='close') d=d.filter(e=>e.status==='close');
-  // Date range filter
-  const from=document.getElementById('fFrom').value;
-  const to=document.getElementById('fTo').value;
-  if(from){ const fd=new Date(from); d=d.filter(e=>new Date(e.ts)>=fd); }
-  if(to){ const td=new Date(to); td.setHours(23,59,59,999); d=d.filter(e=>new Date(e.ts)<=td); }
+function setTab(tab, el) {
+  activeTab = tab;
+  document.querySelectorAll('.ship-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  const titles = {all:'📋 All Escalations',fake:'🚫 Fake Attempt',delay:'⏰ Delay in Delivery',reattempt:'🔄 Reattempt',other:'📌 Other',tab_open:'🔴 Open Escalations',tab_close:'✅ Closed Escalations'};
+  document.getElementById('tableTitle').textContent = titles[tab] || 'Escalations';
+  render();
+}
+
+function filterStat(f, el) {
+  statFilter = f; activeTab = 'all';
+  document.querySelectorAll('.stat').forEach(s => s.classList.remove('active'));
+  el.classList.add('active');
+  document.querySelectorAll('.ship-tab').forEach((t, i) => { if (i === 0) t.classList.add('active'); else t.classList.remove('active'); });
+  document.getElementById('tableTitle').textContent = {all:'📋 All Escalations',open:'🔴 Open Escalations',close:'✅ Closed Escalations'}[f] || '📋 All Escalations';
+  render();
+}
+
+function getFiltered() {
+  let d = [...data];
+  const q = document.getElementById('srchInp').value.toLowerCase();
+  if (q) d = d.filter(e => [e.client,e.order,e.awb,e.courier,e.type,e.remarks,e.id].join(' ').toLowerCase().includes(q));
+  if (activeTab === 'fake') d = d.filter(e => e.type === 'Fake Attempt');
+  else if (activeTab === 'delay') d = d.filter(e => e.type === 'Delay');
+  else if (activeTab === 'reattempt') d = d.filter(e => e.type === 'Reattempt');
+  else if (activeTab === 'other') d = d.filter(e => e.type !== 'Fake Attempt' && e.type !== 'Delay' && e.type !== 'Reattempt');
+  else if (activeTab === 'tab_open') d = d.filter(e => e.status === 'open');
+  else if (activeTab === 'tab_close') d = d.filter(e => e.status === 'close');
+  if (statFilter === 'open') d = d.filter(e => e.status === 'open');
+  else if (statFilter === 'close') d = d.filter(e => e.status === 'close');
+  const from = document.getElementById('fFrom').value;
+  const to = document.getElementById('fTo').value;
+  if (from) { const fd = new Date(from); d = d.filter(e => new Date(e.ts) >= fd); }
+  if (to) { const td = new Date(to); td.setHours(23,59,59,999); d = d.filter(e => new Date(e.ts) <= td); }
   return d;
 }
 
-function render(){
-  const rows=getFiltered(); const tb=document.getElementById('tb');
-  if(!rows.length){tb.innerHTML=`<tr><td colspan="13"><div class="empty"><div class="empty-ico">📭</div>No escalations found</div></td></tr>`;return;}
-  tb.innerHTML=rows.map((e,i)=>{
-    const isOpen=e.status==='open'; const tc=typeClass(e.type); const tat=getTAT(e);
-    const dt=e.date+(e.time?`<br><span style="font-size:10px;color:var(--mt)">${e.time}</span>`:'');
+function render() {
+  const rows = getFiltered();
+  const tb = document.getElementById('tb');
+  if (!rows.length) { tb.innerHTML = `<tr><td colspan="13"><div class="empty"><div class="empty-ico">📭</div>No escalations found</div></td></tr>`; return; }
+  tb.innerHTML = rows.map((e, i) => {
+    const isOpen = e.status === 'open';
+    const tc2 = typeClass(e.type);  // renamed from tc to tc2 to avoid any potential shadowing
+    const tat = getTAT(e);
+    const dt = e.date + (e.time ? `<br><span style="font-size:10px;color:var(--mt)">${e.time}</span>` : '');
     return `<tr class="${isOpen?'open-row':''}">
       <td class="mono" style="font-size:10px;color:var(--mt)">${i+1}</td>
       <td class="mono" style="font-size:11px;white-space:nowrap;line-height:1.5">${dt}</td>
@@ -1076,47 +1172,62 @@ function render(){
       <td class="mono" style="font-size:11px;color:var(--ac);font-weight:600">${e.order}</td>
       <td class="mono" style="font-size:11px">${e.awb||'—'}</td>
       <td><span class="pay-badge">${e.payment||'—'}</span></td>
-      <td><span class="pb ${tc}">${e.type}</span></td>
+      <td><span class="pb ${tc2}">${e.type}</span></td>
       <td style="color:var(--mt);font-size:11px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(e.remarks||'').replace(/"/g,'&quot;')}">${e.remarks||'—'}</td>
       <td><span class="tat-badge ${tat.cls}">${tat.label}</span></td>
       <td><span class="sb-badge ${e.status}">${isOpen?'🔴 Open':'✅ Close'}</span></td>
       <td style="font-size:10px;color:var(--pp);font-family:'DM Mono',monospace;white-space:nowrap">${e.addedBy||'—'}</td>
       <td onclick="event.stopPropagation()" style="display:flex;gap:4px;align-items:center;flex-wrap:nowrap">
         <button class="act-btn vb" onclick="openViewModal('${e.id}')" title="View">👁</button>
-        ${currentUser?.role!=='urbanic'?`<button class="act-btn ub" onclick="openUpdateModal('${e.id}')" title="Update">✏️</button><button class="act-btn db" onclick="delEntry('${e.id}',event)" title="Delete">✕</button>`:''}
+        ${currentUser?.role !== 'urbanic' ? `<button class="act-btn ub" onclick="openUpdateModal('${e.id}')" title="Update">✏️</button><button class="act-btn db" onclick="delEntry('${e.id}',event)" title="Delete">✕</button>` : ''}
       </td>
     </tr>`;
   }).join('');
 }
 
-function updateStats(){ document.getElementById('sTotal').textContent=data.length; document.getElementById('sOpen').textContent=data.filter(e=>e.status==='open').length; document.getElementById('sClosed').textContent=data.filter(e=>e.status==='close').length; }
-function updateTabs(){ document.getElementById('tc_all').textContent=data.length; document.getElementById('tc_fake').textContent=data.filter(e=>e.type==='Fake Attempt').length; document.getElementById('tc_delay').textContent=data.filter(e=>e.type==='Delay').length; document.getElementById('tc_reattempt').textContent=data.filter(e=>e.type==='Reattempt').length; document.getElementById('tc_other').textContent=data.filter(e=>e.type!=='Fake Attempt'&&e.type!=='Delay'&&e.type!=='Reattempt').length; document.getElementById('tc_tab_open').textContent=data.filter(e=>e.status==='open').length; document.getElementById('tc_tab_close').textContent=data.filter(e=>e.status==='close').length; }
+function updateStats() {
+  document.getElementById('sTotal').textContent = data.length;
+  document.getElementById('sOpen').textContent = data.filter(e => e.status === 'open').length;
+  document.getElementById('sClosed').textContent = data.filter(e => e.status === 'close').length;
+}
+
+function updateTabs() {
+  document.getElementById('tc_all').textContent = data.length;
+  document.getElementById('tc_fake').textContent = data.filter(e => e.type === 'Fake Attempt').length;
+  document.getElementById('tc_delay').textContent = data.filter(e => e.type === 'Delay').length;
+  document.getElementById('tc_reattempt').textContent = data.filter(e => e.type === 'Reattempt').length;
+  document.getElementById('tc_other').textContent = data.filter(e => e.type !== 'Fake Attempt' && e.type !== 'Delay' && e.type !== 'Reattempt').length;
+  document.getElementById('tc_tab_open').textContent = data.filter(e => e.status === 'open').length;
+  document.getElementById('tc_tab_close').textContent = data.filter(e => e.status === 'close').length;
+}
 
 // ═══════════════ HELPERS ═══════════════
-function openMo(id){document.getElementById(id).classList.add('open');}
-function closeMo(id){document.getElementById(id).classList.remove('open');}
-function toast(type,title,msg){ const icons={'t-ok':'✅','t-err':'🚨','t-info':'ℹ️','t-bulk':'📤'}; const d=document.createElement('div'); d.className=`toast ${type}`; d.innerHTML=`<div class="ti">${icons[type]||'ℹ️'}</div><div class="tco"><div class="ttl">${title}</div><div class="tmg">${msg}</div></div>`; document.getElementById('tc').appendChild(d); setTimeout(()=>{d.classList.add('fo');setTimeout(()=>d.remove(),300);},3800); }
-function clearFilters(){
-  document.getElementById('fFrom').value='';
-  document.getElementById('fTo').value='';
+function openMo(id) { document.getElementById(id).classList.add('open'); }
+function closeMo(id) { document.getElementById(id).classList.remove('open'); }
+
+function clearFilters() {
+  document.getElementById('fFrom').value = '';
+  document.getElementById('fTo').value = '';
   render();
 }
-function downloadFiltered(){
-  const rows=getFiltered();
-  if(!rows.length){toast('t-info','No Data','No rows match current filters.');return;}
-  const from=document.getElementById('fFrom').value;
-  const to=document.getElementById('fTo').value;
-  const label=from||to?`${from||'start'}_to_${to||'end'}`:'Filtered';
-  const out=rows.map((e,i)=>({'#':i+1,'Date':e.date,'Time':e.time||'','Client Name':e.client,'Order No.':e.order,'AWB No.':e.awb||'','Payment Mode':e.payment||'','Escalation Type':e.type,'Action / Remarks':e.remarks||'','Status':e.status==='open'?'Open':'Close','TAT':getTAT(e).label,'Added By':e.addedBy||'','ID':e.id}));
-  const ws=XLSX.utils.json_to_sheet(out);
-  ws['!cols']=[{wch:4},{wch:14},{wch:10},{wch:18},{wch:14},{wch:16},{wch:12},{wch:20},{wch:35},{wch:10},{wch:12},{wch:16},{wch:14}];
-  const wb=XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb,ws,'Escalations');
-  XLSX.writeFile(wb,`Escalation_${label}.xlsx`);
+
+function downloadFiltered() {
+  const rows = getFiltered();
+  if (!rows.length) { toast('t-info','No Data','No rows match current filters.'); return; }
+  const from = document.getElementById('fFrom').value;
+  const to = document.getElementById('fTo').value;
+  const label = (from || to) ? `${from||'start'}_to_${to||'end'}` : 'Filtered';
+  const out = rows.map((e,i) => ({'#':i+1,'Date':e.date,'Time':e.time||'','Client Name':e.client,'Order No.':e.order,'AWB No.':e.awb||'','Payment Mode':e.payment||'','Escalation Type':e.type,'Action / Remarks':e.remarks||'','Status':e.status==='open'?'Open':'Close','TAT':getTAT(e).label,'Added By':e.addedBy||'','ID':e.id}));
+  const ws = XLSX.utils.json_to_sheet(out);
+  ws['!cols'] = [{wch:4},{wch:14},{wch:10},{wch:18},{wch:14},{wch:16},{wch:12},{wch:20},{wch:35},{wch:10},{wch:12},{wch:16},{wch:14}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Escalations');
+  XLSX.writeFile(wb, `Escalation_${label}.xlsx`);
   toast('t-ok','📥 Downloaded',`${rows.length} rows exported!`);
 }
-function downloadSample(){
-  const sample=[
+
+function downloadSample() {
+  const sample = [
     ['Client Name','AWB No.','Order No. (Optional)','Payment Mode','Escalation Type','Action / Remarks'],
     ['Asaya','AWB-5001','ORD-1001','Prepaid','Fake Attempt','Customer denied delivery attempt, rescheduling'],
     ['Urbanic','AWB-5002','ORD-1002','COD','Delay','Package stuck at hub since 3 days, escalated to courier'],
@@ -1125,17 +1236,11 @@ function downloadSample(){
     ['Zara','AWB-5005','ORD-1005','Prepaid','Other','Wrong product delivered, return initiated'],
     ['Nykaa','AWB-5006','ORD-1006','COD','Delay','Transit delay due to weather, ETA updated'],
   ];
-  const ws=XLSX.utils.aoa_to_sheet(sample);
-  ws['!cols']=[{wch:14},{wch:14},{wch:18},{wch:14},{wch:16},{wch:42}];
-  // Style header row
-  const hdrStyle={font:{bold:true},fill:{fgColor:{rgb:'F0A500'}},alignment:{horizontal:'center'}};
-  ['A1','B1','C1','D1','E1','F1'].forEach(cell=>{ if(!ws[cell]) return; ws[cell].s=hdrStyle; });
-  // Add data validation note
-  ws['D2']={v:'Prepaid',t:'s'}; ws['D3']={v:'COD',t:'s'};
-  const wb=XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb,ws,'Sample Escalation');
-  // Add a notes sheet
-  const notesData=[
+  const ws = XLSX.utils.aoa_to_sheet(sample);
+  ws['!cols'] = [{wch:14},{wch:14},{wch:18},{wch:14},{wch:16},{wch:42}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Sample Escalation');
+  const notesData = [
     ['Field','Required?','Valid Values / Notes'],
     ['Client Name','Yes','Name of the client/brand'],
     ['AWB No.','YES - MANDATORY','Unique AWB number. Duplicates will be rejected.'],
@@ -1144,75 +1249,64 @@ function downloadSample(){
     ['Escalation Type','Yes','Only: Fake Attempt, Delay, Reattempt, Other'],
     ['Action / Remarks','Yes','Describe the issue and action taken'],
   ];
-  const wsNotes=XLSX.utils.aoa_to_sheet(notesData);
-  wsNotes['!cols']=[{wch:18},{wch:18},{wch:48}];
-  XLSX.utils.book_append_sheet(wb,wsNotes,'Field Guide');
-  XLSX.writeFile(wb,'Sample_Escalation_Upload.xlsx');
+  const wsNotes = XLSX.utils.aoa_to_sheet(notesData);
+  wsNotes['!cols'] = [{wch:18},{wch:18},{wch:48}];
+  XLSX.utils.book_append_sheet(wb, wsNotes, 'Field Guide');
+  XLSX.writeFile(wb, 'Sample_Escalation_Upload.xlsx');
   toast('t-ok','📄 Sample Downloaded','Includes Field Guide sheet with all rules!');
 }
-function toggleExportMenu(){
-  const menu=document.getElementById('exportMenu');
-  if(menu.classList.contains('open')){ menu.classList.remove('open'); return; }
+
+function toggleExportMenu() {
+  const menu = document.getElementById('exportMenu');
+  if (menu.classList.contains('open')) { menu.classList.remove('open'); return; }
   buildExportMonths();
   menu.classList.add('open');
 }
-function closeExportMenu(){ document.getElementById('exportMenu').classList.remove('open'); }
-document.addEventListener('click',function(e){ if(!document.getElementById('exportWrap')?.contains(e.target)) closeExportMenu(); });
 
-// Session restore on page load
-try{
-  const s=JSON.parse(sessionStorage.getItem('esc_session'));
-  if(s&&s.id){
-    currentUser=s;
-    document.getElementById('loginScreen').style.display='none';
-    document.getElementById('appWrap').style.display='block';
-    document.getElementById('uName').textContent=s.name;
-    document.getElementById('uAvatar').textContent=s.name.charAt(0).toUpperCase();
-    if(s.role==='admin') document.getElementById('mgrBtn').style.display='';
-    if(s.role==='urbanic'){ document.getElementById('exportWrap').style.display='none'; document.getElementById('mgrBtn').style.display='none'; }
-    else { document.getElementById('exportWrap').style.display=''; }
-    populateActFilter();
-    loadEscalations();
-    loadActivity();
-  }
-}catch(e){}
+function closeExportMenu() { document.getElementById('exportMenu').classList.remove('open'); }
 
-// Backdrop close
-['newMO','upMO','bulkMO','umMO','viewMO'].forEach(id=>document.getElementById(id).addEventListener('click',function(e){if(e.target===this)closeMo(id);}));
-
-function buildExportMonths(){
-  const monthMap={};
-  data.forEach(e=>{
-    if(!e.ts) return;
-    const d=new Date(e.ts);
-    const key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-    monthMap[key]=(monthMap[key]||0)+1;
+function buildExportMonths() {
+  const monthMap = {};
+  data.forEach(e => {
+    if (!e.ts) return;
+    const d = new Date(e.ts);
+    const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    monthMap[key] = (monthMap[key] || 0) + 1;
   });
-  const keys=Object.keys(monthMap).sort().reverse();
-  const container=document.getElementById('emMonths');
-  if(!keys.length){ container.innerHTML='<div style="padding:10px 13px;font-size:11px;color:var(--mt);font-family:\'DM Mono\',monospace">No data yet</div>'; return; }
-  container.innerHTML=keys.map(k=>{
-    const [yr,mo]=k.split('-');
-    const label=new Date(yr,mo-1,1).toLocaleString('en-IN',{month:'long',year:'numeric'});
+  const keys = Object.keys(monthMap).sort().reverse();
+  const container = document.getElementById('emMonths');
+  if (!keys.length) { container.innerHTML = '<div style="padding:10px 13px;font-size:11px;color:var(--mt);font-family:\'DM Mono\',monospace">No data yet</div>'; return; }
+  container.innerHTML = keys.map(k => {
+    const [yr, mo] = k.split('-');
+    const label = new Date(yr, mo-1, 1).toLocaleString('en-IN',{month:'long',year:'numeric'});
     return `<button class="em-month-btn" onclick="downloadByMonth('${k}');closeExportMenu()"><span>${label}</span><span class="em-month-count">${monthMap[k]}</span></button>`;
   }).join('');
 }
 
-function downloadByMonth(key){
-  const [yr,mo]=key.split('-').map(Number);
-  const rows=data.filter(e=>{ if(!e.ts) return false; const d=new Date(e.ts); return d.getFullYear()===yr&&d.getMonth()+1===mo; });
-  if(!rows.length){toast('t-info','No Data','No entries for this month.');return;}
-  const mname=new Date(yr,mo-1,1).toLocaleString('en-IN',{month:'long'});
-  const out=rows.map((e,i)=>({'#':i+1,'Date':e.date,'Time':e.time||'','Client Name':e.client,'Order No.':e.order,'AWB No.':e.awb||'','Payment Mode':e.payment||'','Escalation Type':e.type,'Action / Remarks':e.remarks||'','Status':e.status==='open'?'Open':'Close','TAT':getTAT(e).label,'Added By':e.addedBy||'','ID':e.id}));
-  const ws=XLSX.utils.json_to_sheet(out);
-  ws['!cols']=[{wch:4},{wch:14},{wch:10},{wch:18},{wch:16},{wch:14},{wch:16},{wch:12},{wch:20},{wch:35},{wch:10},{wch:12},{wch:16},{wch:14}];
-  const wb=XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb,ws,`${mname} ${yr}`.slice(0,31));
-  XLSX.writeFile(wb,`Escalation_${mname}_${yr}.xlsx`);
+function downloadByMonth(key) {
+  const [yr, mo] = key.split('-').map(Number);
+  const rows = data.filter(e => { if (!e.ts) return false; const d = new Date(e.ts); return d.getFullYear() === yr && d.getMonth()+1 === mo; });
+  if (!rows.length) { toast('t-info','No Data','No entries for this month.'); return; }
+  const mname = new Date(yr, mo-1, 1).toLocaleString('en-IN',{month:'long'});
+  const out = rows.map((e,i) => ({'#':i+1,'Date':e.date,'Time':e.time||'','Client Name':e.client,'Order No.':e.order,'AWB No.':e.awb||'','Payment Mode':e.payment||'','Escalation Type':e.type,'Action / Remarks':e.remarks||'','Status':e.status==='open'?'Open':'Close','TAT':getTAT(e).label,'Added By':e.addedBy||'','ID':e.id}));
+  const ws = XLSX.utils.json_to_sheet(out);
+  ws['!cols'] = [{wch:4},{wch:14},{wch:10},{wch:18},{wch:16},{wch:14},{wch:16},{wch:12},{wch:20},{wch:35},{wch:10},{wch:12},{wch:16},{wch:14}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, `${mname} ${yr}`.slice(0,31));
+  XLSX.writeFile(wb, `Escalation_${mname}_${yr}.xlsx`);
   toast('t-ok','📥 Downloaded',`${rows.length} rows for ${mname} ${yr}`);
 }
 
-function downloadExcel(){ if(!data.length){toast('t-info','No Data','Nothing to export yet.');return;} const rows=data.map((e,i)=>({'#':i+1,'Date':e.date,'Time':e.time||'','Client Name':e.client,'Order No.':e.order,'AWB No.':e.awb||'','Payment Mode':e.payment||'','Escalation Type':e.type,'Action / Remarks':e.remarks||'','Status':e.status==='open'?'Open':'Close','TAT':getTAT(e).label,'Added By':e.addedBy||'','ID':e.id})); const ws=XLSX.utils.json_to_sheet(rows); ws['!cols']=[{wch:4},{wch:14},{wch:10},{wch:18},{wch:16},{wch:14},{wch:16},{wch:12},{wch:20},{wch:35},{wch:10},{wch:12},{wch:16},{wch:14}]; const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'Escalation Matrix'); XLSX.writeFile(wb,`Escalation_Matrix_${new Date().toISOString().split('T')[0]}.xlsx`); toast('t-ok','📥 Exported','Excel file downloaded!'); }
+function downloadExcel() {
+  if (!data.length) { toast('t-info','No Data','Nothing to export yet.'); return; }
+  const rows = data.map((e,i) => ({'#':i+1,'Date':e.date,'Time':e.time||'','Client Name':e.client,'Order No.':e.order,'AWB No.':e.awb||'','Payment Mode':e.payment||'','Escalation Type':e.type,'Action / Remarks':e.remarks||'','Status':e.status==='open'?'Open':'Close','TAT':getTAT(e).label,'Added By':e.addedBy||'','ID':e.id}));
+  const ws = XLSX.utils.json_to_sheet(rows);
+  ws['!cols'] = [{wch:4},{wch:14},{wch:10},{wch:18},{wch:16},{wch:14},{wch:16},{wch:12},{wch:20},{wch:35},{wch:10},{wch:12},{wch:16},{wch:14}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Escalation Matrix');
+  XLSX.writeFile(wb, `Escalation_Matrix_${new Date().toISOString().split('T')[0]}.xlsx`);
+  toast('t-ok','📥 Exported','Excel file downloaded!');
+}
 </script>
 </body>
 </html>
